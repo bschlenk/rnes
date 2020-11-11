@@ -4,11 +4,9 @@ use crate::bit::*;
 use crate::status::*;
 
 pub struct Cpu {
-  /** The cartridge data */
-  rom: [u8; 65536],
 
   /** The addressable memory */
-  ram: [u8; 65536],
+  mem: [u8; 65536],
 
   /**
    * Program Counter
@@ -92,8 +90,7 @@ pub struct Cpu {
 impl Cpu {
   fn new() -> Cpu {
     Cpu {
-      rom: [0; 65536],
-      ram: [0; 65536],
+      mem: [0; 65536],
       pc: 0,
       s: 0xff,
       acc: 0,
@@ -108,42 +105,42 @@ impl Cpu {
     // decode it, get operands, etc
     // perform whatever task it says
     // increment pc
-    let op = self.rom[self.pc as usize];
+    let op = self.mem[self.pc as usize];
     let mut pc_inc = 1;
 
     // start by matching opcodes without address modes
     match op {
       // TODO: figure out a more dry way
       0x10 => {
-        self.bpl(self.rom[(self.pc + 1) as usize]);
+        self.bpl(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0x30 => {
-        self.bmi(self.rom[(self.pc + 1) as usize]);
+        self.bmi(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0x50 => {
-        self.bvc(self.rom[(self.pc + 1) as usize]);
+        self.bvc(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0x70 => {
-        self.bvs(self.rom[(self.pc + 1) as usize]);
+        self.bvs(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0x90 => {
-        self.bcc(self.rom[(self.pc + 1) as usize]);
+        self.bcc(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0xB0 => {
-        self.bcs(self.rom[(self.pc + 1) as usize]);
+        self.bcs(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0xD0 => {
-        self.bne(self.rom[(self.pc + 1) as usize]);
+        self.bne(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
       0xF0 => {
-        self.beq(self.rom[(self.pc + 1) as usize]);
+        self.beq(self.mem[(self.pc + 1) as usize]);
         pc_inc = 2;
       }
 
@@ -190,19 +187,19 @@ impl Cpu {
             0b000 => {
               // (indirect,x)
               // @see http://obelisk.me.uk/6502/addressing.html#IDX
-              let addr = self.rom[(self.pc + 1) as usize] + self.x;
-              val = self.ram[addr as usize].into();
+              let addr = self.mem[(self.pc + 1) as usize] + self.x;
+              val = self.mem[addr as usize].into();
             }
             0b001 => {
               // zero page
               // @see http://obelisk.me.uk/6502/addressing.html#ZPG
-              let addr = self.rom[(self.pc + 1) as usize];
-              val = self.ram[addr as usize].into();
+              let addr = self.mem[(self.pc + 1) as usize];
+              val = self.mem[addr as usize].into();
             }
             0b010 => {
               // #immediate
               // @see http://obelisk.me.uk/6502/addressing.html#IMM
-              val = self.rom[(self.pc + 1) as usize].into();
+              val = self.mem[(self.pc + 1) as usize].into();
             }
             0b011 => {
               // absolute
@@ -213,27 +210,27 @@ impl Cpu {
             0b100 => {
               // (zero page),Y
               // @see http://obelisk.me.uk/6502/addressing.html#IDY
-              let addr = self.rom[(self.pc + 1) as usize] + self.y;
-              val = self.ram[addr as usize].into();
+              let addr = self.mem[(self.pc + 1) as usize] + self.y;
+              val = self.mem[addr as usize].into();
             }
             0b101 => {
               // zero page,X
               // @see http://obelisk.me.uk/6502/addressing.html#ZPX
-              let addr = self.rom[(self.pc + 1) as usize] + self.x;
-              val = self.ram[addr as usize].into();
+              let addr = self.mem[(self.pc + 1) as usize] + self.x;
+              val = self.mem[addr as usize].into();
             }
             0b110 => {
               // absolute,Y,
               // @see http://obelisk.me.uk/6502/addressing.html#ABY
               let addr: u16 = self.get_absolute_value() + self.y as u16;
-              val = self.ram[addr as usize].into();
+              val = self.mem[addr as usize].into();
               pc_inc = 3;
             }
             0b111 => {
               // absolute,X,
               // @see http://obelisk.me.uk/6502/addressing.html#ABX
               let addr: u16 = self.get_absolute_value() + self.x as u16;
-              val = self.ram[addr as usize].into();
+              val = self.mem[addr as usize].into();
               pc_inc = 3;
             }
             _ => panic!(),
@@ -257,13 +254,13 @@ impl Cpu {
         match b {
           0b000 => {
             // #immediate
-            mem = &mut self.rom[(self.pc + 1) as usize];
+            mem = &mut self.mem[(self.pc + 1) as usize];
             pc_inc = 2;
           }
           0b001 => {
             // zero page
-            let addr = self.rom[(self.pc + 1) as usize];
-            mem = &mut self.ram[addr as usize];
+            let addr = self.mem[(self.pc + 1) as usize];
+            mem = &mut self.mem[addr as usize];
             pc_inc = 2;
           }
           0b010 => {
@@ -272,7 +269,7 @@ impl Cpu {
           }
           0b011 => {
             // absolute
-            mem = &mut self.ram[self.get_absolute_value() as usize];
+            mem = &mut self.mem[self.get_absolute_value() as usize];
             pc_inc = 3;
           }
           0b101 => {
@@ -286,8 +283,8 @@ impl Cpu {
               self.x
             };
 
-            let addr = self.rom[(self.pc + 1) as usize] + offset;
-            mem = &mut self.ram[addr as usize];
+            let addr = self.mem[(self.pc + 1) as usize] + offset;
+            mem = &mut self.mem[addr as usize];
             pc_inc = 2;
           }
           0b111 => {
@@ -302,7 +299,7 @@ impl Cpu {
             };
 
             let addr = self.get_absolute_value() + offset as u16;
-            mem = &mut self.ram[addr as usize];
+            mem = &mut self.mem[addr as usize];
             pc_inc = 3;
           }
           _ => panic!(),
@@ -330,7 +327,7 @@ impl Cpu {
             0b010 => {
               // indirect
               let addr = self.get_absolute_value() as usize;
-              self.jmp(get_u16(&self.ram[addr..2]));
+              self.jmp(get_u16(&self.mem[addr..2]));
             }
             0b011 => {
               // absolute
@@ -353,13 +350,13 @@ impl Cpu {
   }
 
   fn push(&mut self, val: u8) {
-    self.ram[(0x0100 & self.s) as usize] = val;
+    self.mem[(0x0100 & self.s) as usize] = val;
     self.s -= 1;
   }
 
   fn pull(&mut self) -> u8 {
     self.s += 1;
-    self.ram[(0x0100 & self.s) as usize]
+    self.mem[(0x0100 & self.s) as usize]
   }
 
   fn push_u16(&mut self, val: u16) {
@@ -376,7 +373,7 @@ impl Cpu {
 
   // @see http://obelisk.me.uk/6502/addressing.html#ABS
   fn get_absolute_value(&self) -> u16 {
-    get_u16(&self.rom[(self.pc + 1) as usize..2])
+    get_u16(&self.mem[(self.pc + 1) as usize..2])
   }
 
   fn set_flags(&mut self, val: u8) {
@@ -403,7 +400,7 @@ impl Cpu {
   }
 
   fn sta(&mut self, val: u16) {
-    self.ram[val as usize] = self.acc;
+    self.mem[val as usize] = self.acc;
   }
 
   fn stx(&mut self, mem: &mut u8) {
@@ -673,8 +670,8 @@ impl Cpu {
     self.push_u16(self.pc);
     self.push(self.status.bits);
 
-    let lo = self.ram[0xfffe];
-    let hi = self.ram[0xffff];
+    let lo = self.mem[0xfffe];
+    let hi = self.mem[0xffff];
     self.pc = make_u16(lo, hi);
 
     self.status.set_b(true);
