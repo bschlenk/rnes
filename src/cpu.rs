@@ -236,6 +236,7 @@ impl Cpu {
               val = self.ram[addr as usize].into();
               pc_inc = 3;
             }
+            _ => panic!(),
           }
 
           match a {
@@ -247,6 +248,7 @@ impl Cpu {
             0b101 => self.lda(val.try_into().unwrap()),
             0b110 => self.cmp(val.try_into().unwrap()),
             0b111 => self.sbc(val.try_into().unwrap()),
+            _ => panic!(),
           }
           return;
         }
@@ -303,6 +305,7 @@ impl Cpu {
             mem = &mut self.ram[addr as usize];
             pc_inc = 3;
           }
+          _ => panic!(),
         }
 
         if c == 0b10 {
@@ -315,6 +318,7 @@ impl Cpu {
             0b101 => self.ldx(mem),
             0b110 => self.dec(mem),
             0b111 => self.inc(mem),
+            _ => panic!(),
           }
 
           return;
@@ -337,6 +341,7 @@ impl Cpu {
             0b101 => self.ldy(mem),
             0b110 => self.cpy(mem),
             0b111 => self.cpx(mem),
+            _ => panic!(),
           }
 
           return;
