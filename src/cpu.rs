@@ -48,7 +48,7 @@ pub struct Cpu {
    * and efficient optimisation of its use is a key feature of time critical
    * routines.
    */
-  acc: u8,
+  a: u8,
 
   /**
    * Index Register X
@@ -93,7 +93,7 @@ impl Cpu {
       mem: [0; 65536],
       pc: 0,
       s: 0xff,
-      acc: 0,
+      a: 0,
       x: 0,
       y: 0,
       status: Status::new(),
@@ -265,7 +265,7 @@ impl Cpu {
           }
           0b010 => {
             // accumulator
-            mem = &mut self.acc;
+            mem = &mut self.a;
           }
           0b011 => {
             // absolute
@@ -385,8 +385,8 @@ impl Cpu {
 
   // first 3 set negative & zero
   fn lda(&mut self, val: u8) {
-    self.acc = val;
-    self.set_flags(self.acc);
+    self.a = val;
+    self.set_flags(self.a);
   }
 
   fn ldx(&mut self, mem: &u8) {
@@ -400,7 +400,7 @@ impl Cpu {
   }
 
   fn sta(&mut self, val: u16) {
-    self.mem[val as usize] = self.acc;
+    self.mem[val as usize] = self.a;
   }
 
   fn stx(&mut self, mem: &mut u8) {
@@ -431,7 +431,7 @@ impl Cpu {
   }
 
   fn pha(&mut self) {
-    self.push(self.acc);
+    self.push(self.a);
   }
 
   fn php(&mut self) {
@@ -439,8 +439,8 @@ impl Cpu {
   }
 
   fn pla(&mut self) {
-    self.acc = self.pull();
-    self.set_flags(self.acc);
+    self.a = self.pull();
+    self.set_flags(self.a);
   }
 
   fn plp(&mut self) {
@@ -450,22 +450,22 @@ impl Cpu {
   // Logical
 
   fn and(&mut self, val: u8) {
-    self.acc &= val;
-    self.set_flags(self.acc);
+    self.a &= val;
+    self.set_flags(self.a);
   }
 
   fn eor(&mut self, val: u8) {
-    self.acc ^= val;
-    self.set_flags(self.acc);
+    self.a ^= val;
+    self.set_flags(self.a);
   }
 
   fn ora(&mut self, val: u8) {
-    self.acc |= val;
-    self.set_flags(self.acc);
+    self.a |= val;
+    self.set_flags(self.a);
   }
 
   fn bit(&mut self, mem: &mut u8) {
-    self.status.set_z(self.acc & *mem == 0);
+    self.status.set_z(self.a & *mem == 0);
     self.status.set_v(check_bit(*mem, Bit::Six));
     self.status.set_n(check_bit(*mem, Bit::Seven));
   }
@@ -473,29 +473,29 @@ impl Cpu {
   // Arithmetic
 
   fn adc(&mut self, val: u8) {
-    let initial_acc = self.acc;
-    self.acc += val + (self.status.get_c() as u8);
-    self.status.set_c(initial_acc > self.acc);
+    let initial_acc = self.a;
+    self.a += val + (self.status.get_c() as u8);
+    self.status.set_c(initial_acc > self.a);
     self
       .status
       .set_v(self.status.get_c() ^ (check_bit(initial_acc, Bit::Seven)));
-    self.set_flags(self.acc);
+    self.set_flags(self.a);
   }
 
   fn sbc(&mut self, val: u8) {
-    let initial_acc = self.acc;
-    self.acc = self.acc - val - (1 - self.status.get_c() as u8);
-    self.status.set_c(initial_acc < self.acc);
+    let initial_acc = self.a;
+    self.a = self.a - val - (1 - self.status.get_c() as u8);
+    self.status.set_c(initial_acc < self.a);
     self
       .status
       .set_v(self.status.get_c() as u8 ^ (check_bit(initial_acc, Bit::Seven) as u8) != 0);
-    self.set_flags(self.acc);
+    self.set_flags(self.a);
   }
 
   fn cmp(&mut self, val: u8) {
-    self.status.set_c(self.acc >= val);
-    self.status.set_z(self.acc == val);
-    self.status.set_n(self.acc > (Bit::Seven as u8));
+    self.status.set_c(self.a >= val);
+    self.status.set_z(self.a == val);
+    self.status.set_n(self.a > (Bit::Seven as u8));
   }
 
   // N,Z,C
