@@ -22,3 +22,8 @@ support the BCD (binary coded decimal) setting. Not sure if it should
 still support setting the flag though - the status can be pushed to the
 stack so it is possible that some games use it as an extra status bit
 for some reason?
+
+## 11/11/2020
+
+Finally figured out that pc is initialized to the 16 bit address found at the
+reset vector, thanks to http://forums.nesdev.com/viewtopic.php?t=3677
