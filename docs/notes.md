@@ -27,3 +27,32 @@ for some reason?
 
 Finally figured out that pc is initialized to the 16 bit address found at the
 reset vector, thanks to http://forums.nesdev.com/viewtopic.php?t=3677
+
+## 12/29/2020
+
+```
+                    8-bit data bus
+<------+------------+------------+------------+------>
+       ^            ^            ^            ^
+       |            |            |            |
+       v            |            |            |
+  +----+-----+  +---+----+       |            |
+  |          |  |        |       v            v
+  |          |  |  ROM   |  +----+----+  +----+----+
+  |          |  |        |  |         |  |         |
+  |  Central |  +---+----+  |   RAM   |  |   I/O   |
+  |Processing|      ^       |         |  |         |
+  |   Unit   |      |       |         |  |         |
+  |          |  +---+----+  +-+-----+-+  +-+-----+-+
+  |          |  |        |    ^     ^      ^     ^
+  |          |  |  MMC   |    |     |      |     |
+  |          |  |        |    |     |      |     |
+  +--+----+--+  +-+----+-+    |     |      |     |
+     |    |       ^    ^      |     |      |     |
+     |    |       |    |      |     |      |     |
+     |    +-------+-----------+------------+     |
+     |                8-bit control bus          |
+     |                 |            |            |
+     +------------------------------+------------+
+                     16-bit address bus
+```
