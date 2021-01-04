@@ -1,12 +1,16 @@
+use crate::bus::Bus;
 use std::convert::TryInto;
 
 use crate::bit::*;
 use crate::status::*;
 
-pub struct Cpu {
+const NMI_VEC: u16 = 0xfffa;
+const RESET_VEC: u16 = 0xfffc;
+const IRQ_BRK_VEC: u16 = 0xfffe;
 
-  /** The addressable memory */
-  mem: [u8; 65536],
+pub struct Cpu<'a> {
+  /** The memory bus */
+  bus: &'a (dyn Bus + 'a),
 
   /**
    * Program Counter
@@ -87,10 +91,10 @@ pub struct Cpu {
   status: Status,
 }
 
-impl Cpu {
-  fn new() -> Cpu {
+impl<'a> Cpu<'a> {
+  fn new(bus: &'a dyn Bus) -> Cpu<'a> {
     Cpu {
-      mem: [0; 65536],
+      bus,
       pc: 0,
       s: 0xff,
       a: 0,
@@ -98,6 +102,10 @@ impl Cpu {
       y: 0,
       status: Status::new(),
     }
+  }
+
+  fn reset(&mut self) {
+    self.pc = self.read_u16(RESET_VEC);
   }
 
   fn tick(&mut self) {
@@ -204,7 +212,7 @@ impl Cpu {
             0b011 => {
               // absolute
               // @see http://obelisk.me.uk/6502/addressing.html#ABS
-              val = self.get_absolute_value();
+              val = self.read_u16(self.pc + 1);
               pc_inc = 3;
             }
             0b100 => {
@@ -222,14 +230,14 @@ impl Cpu {
             0b110 => {
               // absolute,Y,
               // @see http://obelisk.me.uk/6502/addressing.html#ABY
-              let addr: u16 = self.get_absolute_value() + self.y as u16;
+              let addr: u16 = self.read_u16(self.pc + 1) + self.y as u16;
               val = self.mem[addr as usize].into();
               pc_inc = 3;
             }
             0b111 => {
               // absolute,X,
               // @see http://obelisk.me.uk/6502/addressing.html#ABX
-              let addr: u16 = self.get_absolute_value() + self.x as u16;
+              let addr: u16 = self.read_u16(self.pc + 1) + self.x as u16;
               val = self.mem[addr as usize].into();
               pc_inc = 3;
             }
@@ -269,7 +277,7 @@ impl Cpu {
           }
           0b011 => {
             // absolute
-            mem = &mut self.mem[self.get_absolute_value() as usize];
+            mem = &mut self.mem[self.read_u16(self.pc + 1) as usize];
             pc_inc = 3;
           }
           0b101 => {
@@ -298,7 +306,7 @@ impl Cpu {
               self.x
             };
 
-            let addr = self.get_absolute_value() + offset as u16;
+            let addr = self.read_u16(self.pc + 1) + offset as u16;
             mem = &mut self.mem[addr as usize];
             pc_inc = 3;
           }
@@ -326,8 +334,8 @@ impl Cpu {
             0b001 => self.bit(mem),
             0b010 => {
               // indirect
-              let addr = self.get_absolute_value() as usize;
-              self.jmp(get_u16(&self.mem[addr..2]));
+              let addr = self.read_u16(self.pc + 1) as usize;
+              self.jmp(read_u16(&self.mem[addr..2]));
             }
             0b011 => {
               // absolute
@@ -349,14 +357,31 @@ impl Cpu {
     self.pc += pc_inc;
   }
 
+  // TODO: remove these methods, just hardcode reading/writing from bus
+  fn read(&self, addr: u16) -> u8 {
+    self.bus.read(addr)
+  }
+
+  fn read_u16(&self, addr: u16) -> u16 {
+    self.bus.read_u16(addr)
+  }
+
+  fn write(&mut self, addr: u16, val: u8) {
+    self.bus.write(addr, val);
+  }
+
+  fn write_u16(&self, addr: u16, val: u16) {
+    self.bus.write_u16(addr, val)
+  }
+
   fn push(&mut self, val: u8) {
-    self.mem[(0x0100 & self.s) as usize] = val;
+    self.write(0x0100 & (self.s as u16), val);
     self.s -= 1;
   }
 
   fn pull(&mut self) -> u8 {
     self.s += 1;
-    self.mem[(0x0100 & self.s) as usize]
+    self.read(0x0100 & (self.s as u16))
   }
 
   fn push_u16(&mut self, val: u16) {
@@ -369,11 +394,6 @@ impl Cpu {
     let lo = self.pull();
     let hi = self.pull();
     return make_u16(lo, hi);
-  }
-
-  // @see http://obelisk.me.uk/6502/addressing.html#ABS
-  fn get_absolute_value(&self) -> u16 {
-    get_u16(&self.mem[(self.pc + 1) as usize..2])
   }
 
   fn set_flags(&mut self, val: u8) {
@@ -575,7 +595,7 @@ impl Cpu {
   fn jsr(&mut self) {
     // Jump to a subroutine
     self.push_u16(self.pc + 2);
-    self.pc = self.get_absolute_value();
+    self.pc = self.read_u16(self.pc + 1);
   }
 
   fn rts(&mut self) {
@@ -669,11 +689,7 @@ impl Cpu {
 
     self.push_u16(self.pc);
     self.push(self.status.bits);
-
-    let lo = self.mem[0xfffe];
-    let hi = self.mem[0xffff];
-    self.pc = make_u16(lo, hi);
-
+    self.pc = self.read_u16(IRQ_BRK_VEC);
     self.status.set_b(true);
   }
 
