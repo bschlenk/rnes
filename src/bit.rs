@@ -24,10 +24,16 @@ pub fn split_u16(val: u16) -> (u8, u8) {
   (lo, hi)
 }
 
-pub fn get_u16(mem: &[u8]) -> u16 {
+pub fn read_u16(mem: &[u8]) -> u16 {
   let lo = mem[0];
   let hi = mem[1];
   make_u16(lo, hi)
+}
+
+pub fn write_u16(mem: &mut [u8], val: u16) {
+  let (lo, hi) = split_u16(val);
+  mem[0] = lo;
+  mem[1] = hi;
 }
 
 #[cfg(test)]
@@ -55,6 +61,12 @@ mod tests {
 
   fn it_can_get_a_u16_from_a_u8_array() {
     let mem: [u8; 2] = [0xCD, 0xAB];
-    assert_eq!(0xABCD, get_u16(&mem));
+    assert_eq!(0xABCD, read_u16(&mem));
+  }
+
+  fn it_can_write_a_u16() {
+    let mem: [u8; 2] = [0; 2];
+    write_u16(&mut mem, 0xabcd);
+    assert_eq!(mem, [0xab, 0xcd]);
   }
 }
