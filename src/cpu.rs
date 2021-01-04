@@ -376,11 +376,11 @@ impl<'a> Cpu<'a> {
 
   fn push(&mut self, val: u8) {
     self.write(0x0100 & (self.s as u16), val);
-    self.s -= 1;
+    self.s = self.s.wrapping_sub(1);
   }
 
   fn pull(&mut self) -> u8 {
-    self.s += 1;
+    self.s = self.s.wrapping_add(1);
     self.read(0x0100 & (self.s as u16))
   }
 
