@@ -8,6 +8,23 @@ const NMI_VEC: u16 = 0xfffa;
 const RESET_VEC: u16 = 0xfffc;
 const IRQ_BRK_VEC: u16 = 0xfffe;
 
+const HZ_NTSC: f32 = 1.0 / 1789773.0;
+const HZ_PAL: f32 = 1.0 / 1662607.0;
+
+// next pc, cycles
+struct OpInfo(u16, u8);
+
+enum AddressMode {
+  Immidiate,
+  ZeroPage,
+  ZeroPageX,
+  Absolute,
+  AbsoluteX,
+  AbsoluteY,
+  IndirectX,
+  IndirectY,
+}
+
 pub struct Cpu<'a> {
   /** The memory bus */
   bus: &'a (dyn Bus + 'a),
