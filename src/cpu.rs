@@ -13,15 +13,18 @@ const HZ_PAL: f32 = 1.0 / 1662607.0;
 // next pc, cycles
 struct OpInfo(u16, u8);
 
+#[derive(Debug)]
 enum AddressMode {
-  Immidiate,
-  ZeroPage,
-  ZeroPageX,
-  Absolute,
-  AbsoluteX,
-  AbsoluteY,
-  IndirectX,
-  IndirectY,
+  Implicit,
+  Immediate, // #$00
+  ZeroPage,  // $00
+  ZeroPageX, // $00,X
+  ZeroPageY, // $00,Y
+  Absolute,  // $0000
+  AbsoluteX, // $0000,X
+  AbsoluteY, // $0000,Y
+  IndirectX, // ($00,X)
+  IndirectY, // ($00),Y
 }
 
 pub struct Cpu<'a> {
@@ -197,6 +200,28 @@ impl<'a> Cpu<'a> {
   fn set_z_n_flags(&mut self, val: u8) {
     self.status.set_z(val == 0);
     self.status.set_n(check_bit(val, Bit::Seven));
+  }
+
+  fn get_operand_address(&self, mode: AddressMode) -> u16 {
+    use AddressMode::*;
+
+    match mode {
+      Implicit => panic!("implicit address mode has no operand"),
+      Immediate => self.pc,
+      ZeroPage => self.bus.read(self.pc) as u16,
+      ZeroPageX => self.bus.read(self.pc).wrapping_add(self.x) as u16,
+      ZeroPageY => self.bus.read(self.pc).wrapping_add(self.y) as u16,
+      Absolute => self.bus.read_u16(self.pc),
+      AbsoluteX => self.bus.read_u16(self.pc).wrapping_add(self.x as u16),
+      AbsoluteY => self.bus.read_u16(self.pc).wrapping_add(self.y as u16),
+      IndirectX => self
+        .bus
+        .wrapping_read_u16(self.bus.read(self.pc).wrapping_add(self.x)),
+      IndirectY => self
+        .bus
+        .wrapping_read_u16(self.read(self.pc))
+        .wrapping_add(self.y as u16),
+    }
   }
 
   // Load / Store Operations
