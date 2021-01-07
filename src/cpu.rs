@@ -149,7 +149,7 @@ impl<'a> Cpu<'a> {
         }
         0xaa => self.tax(),
         0xe8 => self.inx(),
-        _ => panic!("instruction not implemented!")
+        _ => panic!("instruction {:?} not implemented", op),
       }
     }
   }
