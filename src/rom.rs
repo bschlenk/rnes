@@ -31,8 +31,8 @@ pub struct Rom {
 
 impl Rom {
   pub fn load_from_file(path: &str) -> Result<Self, io::Error> {
-    let f = File::open(path)?;
-    let header: [u8; 16] = [0; 16];
+    let mut f = File::open(path)?;
+    let mut header: [u8; 16] = [0; 16];
     f.read_exact(&mut header)?;
 
     if header[0..4] != MAGIC {
@@ -60,7 +60,7 @@ impl Rom {
 
     let mapper = rom_control_2 | (rom_control_1 >> 4);
 
-    let mem = Vec::new();
+    let mut mem = Vec::new();
     f.read_to_end(&mut mem)?;
 
     Ok(Rom {
