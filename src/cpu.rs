@@ -122,6 +122,11 @@ impl<'a> Cpu<'a> {
 
   fn reset(&mut self) {
     self.pc = self.read_u16(RESET_VEC);
+    self.s = 0xff;
+    self.a = 0;
+    self.x = 0;
+    self.y = 0;
+    self.status = Status::new();
   }
 
   // TODO: remove these methods, just hardcode reading/writing from bus
