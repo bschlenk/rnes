@@ -163,7 +163,7 @@ impl<'a> Cpu<'a> {
     make_u16(lo, hi)
   }
 
-  fn set_flags(&mut self, val: u8) {
+  fn set_z_n_flags(&mut self, val: u8) {
     self.status.set_z(val == 0);
     self.status.set_n(check_bit(val, Bit::Seven));
   }
@@ -173,21 +173,21 @@ impl<'a> Cpu<'a> {
   // first 3 set negative & zero
   fn lda(&mut self, val: u8) {
     self.a = val;
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn ldx(&mut self, mem: &u8) {
     self.x = *mem;
-    self.set_flags(self.x);
+    self.set_z_n_flags(self.x);
   }
 
   fn ldy(&mut self, mem: &u8) {
     self.y = *mem;
-    self.set_flags(self.y);
+    self.set_z_n_flags(self.y);
   }
 
   fn sta(&mut self, val: u16) {
-    self.mem[val as usize] = self.a;
+    self.write(val, self.a);
   }
 
   fn stx(&mut self, mem: &mut u8) {
@@ -210,7 +210,7 @@ impl<'a> Cpu<'a> {
 
   fn tsx(&mut self) {
     self.x = self.s;
-    self.set_flags(self.x);
+    self.set_z_n_flags(self.x);
   }
 
   fn txs(&mut self) {
@@ -227,7 +227,7 @@ impl<'a> Cpu<'a> {
 
   fn pla(&mut self) {
     self.a = self.pull();
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn plp(&mut self) {
@@ -238,17 +238,17 @@ impl<'a> Cpu<'a> {
 
   fn and(&mut self, val: u8) {
     self.a &= val;
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn eor(&mut self, val: u8) {
     self.a ^= val;
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn ora(&mut self, val: u8) {
     self.a |= val;
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn bit(&mut self, mem: &mut u8) {
@@ -266,7 +266,7 @@ impl<'a> Cpu<'a> {
     self
       .status
       .set_v(self.status.get_c() ^ (check_bit(initial_acc, Bit::Seven)));
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn sbc(&mut self, val: u8) {
@@ -276,7 +276,7 @@ impl<'a> Cpu<'a> {
     self
       .status
       .set_v(self.status.get_c() as u8 ^ (check_bit(initial_acc, Bit::Seven) as u8) != 0);
-    self.set_flags(self.a);
+    self.set_z_n_flags(self.a);
   }
 
   fn cmp(&mut self, val: u8) {
@@ -294,32 +294,32 @@ impl<'a> Cpu<'a> {
 
   fn inc(&mut self, mem: &mut u8) {
     *mem += 1;
-    self.set_flags(*mem);
+    self.set_z_n_flags(*mem);
   }
 
   fn inx(&mut self) {
     self.x += 1;
-    self.set_flags(self.x)
+    self.set_z_n_flags(self.x)
   }
 
   fn iny(&mut self) {
     self.y += 1;
-    self.set_flags(self.y)
+    self.set_z_n_flags(self.y)
   }
 
   fn dec(&mut self, mem: &mut u8) {
     *mem -= 1;
-    self.set_flags(*mem);
+    self.set_z_n_flags(*mem);
   }
 
   fn dex(&mut self) {
     self.x -= 1;
-    self.set_flags(self.x)
+    self.set_z_n_flags(self.x)
   }
 
   fn dey(&mut self) {
     self.y -= 1;
-    self.set_flags(self.y)
+    self.set_z_n_flags(self.y)
   }
 
   // Shifts
@@ -327,13 +327,13 @@ impl<'a> Cpu<'a> {
   fn asl(&mut self, addr: &mut u8) {
     self.status.set_c(check_bit(*addr, Bit::Seven));
     *addr <<= 1;
-    self.set_flags(*addr);
+    self.set_z_n_flags(*addr);
   }
 
   fn lsr(&mut self, addr: &mut u8) {
     self.status.set_c(check_bit(*addr, Bit::Zero));
     *addr >>= 1;
-    self.set_flags(*addr);
+    self.set_z_n_flags(*addr);
   }
 
   fn rol(&mut self, addr: &mut u8) {
@@ -342,7 +342,7 @@ impl<'a> Cpu<'a> {
     self.status.set_c(check_bit(*addr, Bit::Seven));
     *addr <<= 1;
     *addr |= carry;
-    self.set_flags(*addr);
+    self.set_z_n_flags(*addr);
   }
 
   fn ror(&mut self, addr: &mut u8) {
@@ -350,7 +350,7 @@ impl<'a> Cpu<'a> {
     self.status.set_c(check_bit(*addr, Bit::Zero));
     *addr >>= 1;
     *addr |= carry << 7;
-    self.set_flags(*addr);
+    self.set_z_n_flags(*addr);
   }
 
   // Jumps & Calls
