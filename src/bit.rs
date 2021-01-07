@@ -42,9 +42,10 @@ mod tests {
 
   #[test]
   fn it_checks_the_correct_bit() {
-    assert_eq!(true, check_bit(0x01000000, Bit::Six));
+    assert_eq!(true, check_bit(0b0100_0000, Bit::Six));
   }
 
+  #[test]
   fn it_can_make_a_u16() {
     let lo = 0xCD;
     let hi = 0xAB;
@@ -52,6 +53,7 @@ mod tests {
     assert_eq!(0xABCD, make_u16(lo, hi));
   }
 
+  #[test]
   fn it_can_split_a_u16() {
     let (lo, hi) = split_u16(0xABCD);
 
@@ -59,14 +61,16 @@ mod tests {
     assert_eq!(0xAB, hi);
   }
 
+  #[test]
   fn it_can_get_a_u16_from_a_u8_array() {
     let mem: [u8; 2] = [0xCD, 0xAB];
     assert_eq!(0xABCD, read_u16(&mem));
   }
 
+  #[test]
   fn it_can_write_a_u16() {
-    let mem: [u8; 2] = [0; 2];
+    let mut mem: [u8; 2] = [0; 2];
     write_u16(&mut mem, 0xabcd);
-    assert_eq!(mem, [0xab, 0xcd]);
+    assert_eq!(mem, [0xcd, 0xab]);
   }
 }
