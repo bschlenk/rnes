@@ -137,9 +137,9 @@ mod tests {
 
   #[test]
   fn it_can_set_a_bit() {
-    let s = Status::new();
+    let mut s = Status::new();
     s.set_n(true);
 
-    assert_eq!(0x10000000, s.bits);
+    assert_eq!(0b1000_0000, s.bits);
   }
 }
