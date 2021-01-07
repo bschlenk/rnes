@@ -129,6 +129,32 @@ impl<'a> Cpu<'a> {
     self.status = Status::new();
   }
 
+  fn process(&mut self) {
+    loop {
+      let op = self.read(self.pc);
+      self.inc_pc(1);
+
+      match op {
+        0x00 => {
+          return;
+        }
+        0xa9 => {
+          let param = self.read(self.pc);
+          self.inc_pc(1);
+
+          self.lda(param);
+        }
+        0xaa => self.tax(),
+        0xe8 => self.inx(),
+        _ => panic!("instruction not implemented!")
+      }
+    }
+  }
+
+  fn inc_pc(&mut self, inc: u16) {
+    self.pc += inc;
+  }
+
   // TODO: remove these methods, just hardcode reading/writing from bus
   fn read(&self, addr: u16) -> u8 {
     self.bus.read(addr)
@@ -206,7 +232,10 @@ impl<'a> Cpu<'a> {
   // Register Transfers
 
   // all 4 set negative & zero
-  fn tax(&mut self) {}
+  fn tax(&mut self) {
+    self.x = self.a;
+    self.set_z_n_flags(self.x);
+  }
   fn tay(&mut self) {}
   fn txa(&mut self) {}
   fn tya(&mut self) {}
@@ -472,5 +501,54 @@ impl<'a> Cpu<'a> {
 
   fn nop(&mut self) {
     // nothing
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_0xa9_lda_immidiate_load_data() {
+    let mut bus = vec![0xa9, 0x05, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.process();
+    assert_eq!(cpu.a, 0x05);
+    assert!(cpu.status.get_z() == false);
+    assert!(cpu.status.get_n() == false);
+  }
+
+  #[test]
+  fn test_0xa9_lda_zero_flag() {
+    let mut bus = vec![0xa9, 0x00, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.process();
+    assert!(cpu.status.get_z() == true);
+  }
+
+  #[test]
+  fn test_0xaa_tax_move_a_to_x() {
+    let mut bus = vec![0xaa, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 10;
+    cpu.process();
+    assert_eq!(cpu.x, 10)
+  }
+
+  #[test]
+  fn test_5_ops_working_together() {
+    let mut bus = vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.process();
+    assert_eq!(cpu.x, 0xc1)
+  }
+
+  #[test]
+  fn test_inx_overflow() {
+    let mut bus = vec![0xe8, 0xe8, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.x = 0xff;
+    cpu.process();
+    assert_eq!(cpu.x, 1)
   }
 }
