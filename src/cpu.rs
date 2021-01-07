@@ -27,7 +27,7 @@ enum AddressMode {
 
 pub struct Cpu<'a> {
   /** The memory bus */
-  bus: &'a (dyn Bus + 'a),
+  pub bus: &'a mut (dyn Bus + 'a),
 
   /**
    * Program Counter
@@ -40,7 +40,7 @@ pub struct Cpu<'a> {
    * a relative branch or a subroutine call to another memory address or
    * by returning from a subroutine or interrupt.
    */
-  pc: u16,
+  pub pc: u16,
 
   /**
    * Stack Pointer
@@ -56,7 +56,7 @@ pub struct Cpu<'a> {
    * The CPU does not detect if the stack is overflowed by excessive pushing or
    * pulling operations and will most likely result in the program crashing.
    */
-  s: u8,
+  pub s: u8,
 
   /**
    * Accumulator
@@ -69,7 +69,7 @@ pub struct Cpu<'a> {
    * and efficient optimisation of its use is a key feature of time critical
    * routines.
    */
-  a: u8,
+  pub a: u8,
 
   /**
    * Index Register X
@@ -82,7 +82,7 @@ pub struct Cpu<'a> {
    * The X register has one special function. It can be used to get a copy of
    * the stack pointer or change its value.
    */
-  x: u8,
+  pub x: u8,
 
   /**
    * Index Register Y
@@ -92,7 +92,7 @@ pub struct Cpu<'a> {
    * memory load, save and compare operations as wells as increments and
    * decrements. It has no special functions.
    */
-  y: u8,
+  pub y: u8,
 
   /**
    * Processor Status
@@ -105,11 +105,11 @@ pub struct Cpu<'a> {
    * Instructions exist to test the values of the various bits, to set or clear
    * some of them and to push or pull the entire set to or from the stack.
    */
-  status: Status,
+  pub status: Status,
 }
 
 impl<'a> Cpu<'a> {
-  fn new(bus: &'a dyn Bus) -> Cpu<'a> {
+  fn new(bus: &'a mut dyn Bus) -> Cpu<'a> {
     Cpu {
       bus,
       pc: 0,
@@ -387,7 +387,7 @@ impl<'a> Cpu<'a> {
     self.bus.write(addr, val);
   }
 
-  fn write_u16(&self, addr: u16, val: u16) {
+  fn write_u16(&mut self, addr: u16, val: u16) {
     self.bus.write_u16(addr, val)
   }
 
@@ -410,7 +410,7 @@ impl<'a> Cpu<'a> {
   fn pull_u16(&mut self) -> u16 {
     let lo = self.pull();
     let hi = self.pull();
-    return make_u16(lo, hi);
+    make_u16(lo, hi)
   }
 
   fn set_flags(&mut self, val: u8) {
@@ -542,7 +542,7 @@ impl<'a> Cpu<'a> {
 
   // Increments & Decrements
 
-  fn inc(&mut self, mem: &u8) {
+  fn inc(&mut self, mem: &mut u8) {
     *mem += 1;
     self.set_flags(*mem);
   }
@@ -557,7 +557,7 @@ impl<'a> Cpu<'a> {
     self.set_flags(self.y)
   }
 
-  fn dec(&mut self, mem: &u8) {
+  fn dec(&mut self, mem: &mut u8) {
     *mem -= 1;
     self.set_flags(*mem);
   }
