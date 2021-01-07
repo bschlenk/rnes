@@ -298,7 +298,7 @@ impl<'a> Cpu<'a> {
   }
 
   fn inx(&mut self) {
-    self.x += 1;
+    self.x = self.x.wrapping_add(1);
     self.set_z_n_flags(self.x)
   }
 
