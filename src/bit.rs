@@ -15,12 +15,11 @@ pub fn check_bit(val: u8, bit: Bit) -> bool {
 }
 
 pub fn make_u16(lo: u8, hi: u8) -> u16 {
-  (hi << 2 | lo) as u16
+  u16::from_le_bytes([lo, hi])
 }
 
 pub fn split_u16(val: u16) -> (u8, u8) {
-  let lo = (val & 0xff) as u8;
-  let hi = ((val & 0xff00) >> 2) as u8;
+  let [lo, hi] = val.to_le_bytes();
   (lo, hi)
 }
 
