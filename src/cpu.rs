@@ -10,9 +10,6 @@ const IRQ_BRK_VEC: u16 = 0xfffe;
 const HZ_NTSC: f32 = 1.0 / 1789773.0;
 const HZ_PAL: f32 = 1.0 / 1662607.0;
 
-// next pc, cycles
-struct OpInfo(u16, u8);
-
 #[derive(Debug)]
 enum AddressMode {
   Implicit,
