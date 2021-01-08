@@ -24,6 +24,8 @@ enum AddressMode {
   IndirectY, // ($00),Y
 }
 
+use AddressMode::*;
+
 pub struct Cpu<'a> {
   /** The memory bus */
   pub bus: &'a mut (dyn Bus + 'a),
@@ -138,13 +140,39 @@ impl<'a> Cpu<'a> {
         0x00 => {
           return;
         }
-        0xa9 => {
-          let param = self.read(self.pc);
+        0xa1 => {
+          self.lda(IndirectX);
           self.inc_pc(1);
-
-          self.lda(param);
+        }
+        0xa5 => {
+          self.lda(ZeroPage);
+          self.inc_pc(1);
+        }
+        0xa9 => {
+          self.lda(Immediate);
+          self.inc_pc(1);
         }
         0xaa => self.tax(),
+        0xad => {
+          self.lda(Absolute);
+          self.inc_pc(1);
+        }
+        0xb1 => {
+          self.lda(IndirectY);
+          self.inc_pc(1);
+        }
+        0xb5 => {
+          self.lda(ZeroPageX);
+          self.inc_pc(1);
+        }
+        0xb9 => {
+          self.lda(AbsoluteY);
+          self.inc_pc(2);
+        }
+        0xbd => {
+          self.lda(AbsoluteX);
+          self.inc_pc(2);
+        }
         0xe8 => self.inx(),
         _ => panic!("instruction {:?} not implemented", op),
       }
@@ -200,8 +228,6 @@ impl<'a> Cpu<'a> {
   }
 
   fn get_operand_address(&self, mode: AddressMode) -> u16 {
-    use AddressMode::*;
-
     match mode {
       Implicit => panic!("implicit address mode has no operand"),
       Immediate => self.pc,
@@ -224,9 +250,12 @@ impl<'a> Cpu<'a> {
   // Load / Store Operations
 
   // first 3 set negative & zero
-  fn lda(&mut self, val: u8) {
+  fn lda(&mut self, mode: AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.bus.read(addr);
+
     self.a = val;
-    self.set_z_n_flags(self.a);
+    self.set_z_n_flags(val);
   }
 
   fn ldx(&mut self, mem: &u8) {
@@ -531,7 +560,7 @@ mod test {
   use super::*;
 
   #[test]
-  fn test_0xa9_lda_immidiate_load_data() {
+  fn test_0xa9_lda_immediate_load_data() {
     let mut bus = vec![0xa9, 0x05, 0x00];
     let mut cpu = Cpu::new(&mut bus);
     cpu.process();
@@ -572,5 +601,31 @@ mod test {
     cpu.x = 0xff;
     cpu.process();
     assert_eq!(cpu.x, 1)
+  }
+
+  #[test]
+  fn test_0xa5_lda_zero_page() {
+    let mut bus = vec![0; 0x10];
+    bus[0] = 0xa5;
+    bus[1] = 0x09;
+    bus[0x09] = 0xba;
+
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.process();
+    assert_eq!(cpu.a, 0xba)
+  }
+
+  #[test]
+  fn test_0xb5_lda_zero_page_x() {
+    let mut bus = vec![0; 0x10];
+    bus[0] = 0xb5;
+    bus[1] = 0x05;
+    bus[0x07] = 0xfa;
+
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.x = 0x02;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0xfa)
   }
 }
