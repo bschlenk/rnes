@@ -140,6 +140,34 @@ impl<'a> Cpu<'a> {
         0x00 => {
           return;
         }
+        0x81 => {
+          self.sta(IndirectX);
+          self.inc_pc(1);
+        }
+        0x85 => {
+          self.sta(ZeroPage);
+          self.inc_pc(1);
+        }
+        0x8d => {
+          self.sta(Absolute);
+          self.inc_pc(2);
+        }
+        0x91 => {
+          self.sta(IndirectY);
+          self.inc_pc(1);
+        }
+        0x95 => {
+          self.sta(ZeroPageX);
+          self.inc_pc(1);
+        }
+        0x99 => {
+          self.sta(AbsoluteY);
+          self.inc_pc(2);
+        }
+        0x9d => {
+          self.sta(AbsoluteX);
+          self.inc_pc(2);
+        }
         0xa1 => {
           self.lda(IndirectX);
           self.inc_pc(1);
@@ -268,8 +296,9 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.y);
   }
 
-  fn sta(&mut self, val: u16) {
-    self.write(val, self.a);
+  fn sta(&mut self, mode: AddressMode) {
+    let addr = self.get_operand_address(mode);
+    self.write(addr, self.a);
   }
 
   fn stx(&mut self, mem: &mut u8) {
@@ -627,5 +656,36 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0xfa)
+  }
+
+  #[test]
+  fn test_0xb1_lda_indirect_y() {
+    let mut bus = vec![0; 0x1_0000];
+    bus[0] = 0xb1;
+    bus[1] = 0x03;
+    bus[3] = 0x03;
+    bus[4] = 0x04;
+    bus[0x0406] = 0xba;
+
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.y = 0x03;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0xba)
+  }
+
+  #[test]
+  fn test_0x9d_sta_absolute_x() {
+    let mut bus = vec![0; 0x1_0000];
+    bus[0] = 0x9d;
+    bus[1] = 0x02;
+    bus[2] = 0x03;
+
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.x = 0x04;
+    cpu.a = 0xaa;
+
+    cpu.process();
+    assert_eq!(bus[0x0306], 0xaa)
   }
 }
