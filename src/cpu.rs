@@ -1,6 +1,6 @@
-use crate::bus::Bus;
-
 use crate::bit::*;
+use crate::bus::Bus;
+use crate::opcodes::{OpCode::*, OpInfo, OPCODES_MAP};
 use crate::status::*;
 
 const NMI_VEC: u16 = 0xfffa;
@@ -11,7 +11,7 @@ const HZ_NTSC: f32 = 1.0 / 1789773.0;
 const HZ_PAL: f32 = 1.0 / 1662607.0;
 
 #[derive(Debug)]
-enum AddressMode {
+pub enum AddressMode {
   Implicit,
   Immediate, // #$00
   ZeroPage,  // $00
@@ -133,82 +133,37 @@ impl<'a> Cpu<'a> {
 
   fn process(&mut self) {
     loop {
-      let op = self.read(self.pc);
+      let opcode = self.read(self.pc);
       self.inc_pc(1);
 
-      match op {
-        0x00 => {
-          return;
-        }
-        0x81 => {
-          self.sta(IndirectX);
-          self.inc_pc(1);
-        }
-        0x85 => {
-          self.sta(ZeroPage);
-          self.inc_pc(1);
-        }
-        0x8d => {
-          self.sta(Absolute);
-          self.inc_pc(2);
-        }
-        0x91 => {
-          self.sta(IndirectY);
-          self.inc_pc(1);
-        }
-        0x95 => {
-          self.sta(ZeroPageX);
-          self.inc_pc(1);
-        }
-        0x99 => {
-          self.sta(AbsoluteY);
-          self.inc_pc(2);
-        }
-        0x9d => {
-          self.sta(AbsoluteX);
-          self.inc_pc(2);
-        }
-        0xa1 => {
-          self.lda(IndirectX);
-          self.inc_pc(1);
-        }
-        0xa5 => {
-          self.lda(ZeroPage);
-          self.inc_pc(1);
-        }
-        0xa9 => {
-          self.lda(Immediate);
-          self.inc_pc(1);
-        }
-        0xaa => self.tax(),
-        0xad => {
-          self.lda(Absolute);
-          self.inc_pc(1);
-        }
-        0xb1 => {
-          self.lda(IndirectY);
-          self.inc_pc(1);
-        }
-        0xb5 => {
-          self.lda(ZeroPageX);
-          self.inc_pc(1);
-        }
-        0xb9 => {
-          self.lda(AbsoluteY);
-          self.inc_pc(2);
-        }
-        0xbd => {
-          self.lda(AbsoluteX);
-          self.inc_pc(2);
-        }
-        0xe8 => self.inx(),
+      let op = OPCODES_MAP[opcode as usize];
+
+      match op.op {
+        BRK => return,
+
+        TAX => self.tax(),
+        TXA => self.txa(),
+        DEX => self.dex(),
+        INX => self.inx(),
+        TAY => self.tay(),
+        TYA => self.tya(),
+        DEY => self.dey(),
+        INY => self.iny(),
+
+        ADC => self.adc(&op.mode),
+
+        STA => self.sta(&op.mode),
+        LDA => self.lda(&op.mode),
+
         _ => panic!("instruction {:?} not implemented", op),
       }
+
+      self.inc_pc(op.len - 1);
     }
   }
 
-  fn inc_pc(&mut self, inc: u16) {
-    self.pc += inc;
+  fn inc_pc(&mut self, inc: u8) {
+    self.pc += inc as u16;
   }
 
   // TODO: remove these methods, just hardcode reading/writing from bus
@@ -255,7 +210,7 @@ impl<'a> Cpu<'a> {
     self.status.set_n(check_bit(val, Bit::Seven));
   }
 
-  fn get_operand_address(&self, mode: AddressMode) -> u16 {
+  fn get_operand_address(&self, mode: &AddressMode) -> u16 {
     match mode {
       Implicit => panic!("implicit address mode has no operand"),
       Immediate => self.pc,
@@ -278,8 +233,8 @@ impl<'a> Cpu<'a> {
   // Load / Store Operations
 
   // first 3 set negative & zero
-  fn lda(&mut self, mode: AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn lda(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(&mode);
     let val = self.bus.read(addr);
 
     self.a = val;
@@ -296,7 +251,7 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.y);
   }
 
-  fn sta(&mut self, mode: AddressMode) {
+  fn sta(&mut self, mode: &AddressMode) {
     let addr = self.get_operand_address(mode);
     self.write(addr, self.a);
   }
@@ -311,14 +266,25 @@ impl<'a> Cpu<'a> {
 
   // Register Transfers
 
-  // all 4 set negative & zero
   fn tax(&mut self) {
     self.x = self.a;
     self.set_z_n_flags(self.x);
   }
-  fn tay(&mut self) {}
-  fn txa(&mut self) {}
-  fn tya(&mut self) {}
+
+  fn txa(&mut self) {
+    self.a = self.x;
+    self.set_z_n_flags(self.a);
+  }
+
+  fn tay(&mut self) {
+    self.y = self.a;
+    self.set_z_n_flags(self.y);
+  }
+
+  fn tya(&mut self) {
+    self.a = self.y;
+    self.set_z_n_flags(self.a);
+  }
 
   // Stack Operations
 
@@ -373,13 +339,19 @@ impl<'a> Cpu<'a> {
 
   // Arithmetic
 
-  fn adc(&mut self, val: u8) {
-    let initial_acc = self.a;
-    self.a += val + (self.status.get_c() as u8);
-    self.status.set_c(initial_acc > self.a);
+  fn adc(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
+
+    let initial_a = self.a;
+    self.a = self
+      .a
+      .wrapping_add(val)
+      .wrapping_add(self.status.get_c() as u8);
+    self.status.set_c(initial_a > self.a);
     self
       .status
-      .set_v(self.status.get_c() ^ (check_bit(initial_acc, Bit::Seven)));
+      .set_v(self.status.get_c() ^ (check_bit(initial_a, Bit::Seven)));
     self.set_z_n_flags(self.a);
   }
 
@@ -417,7 +389,7 @@ impl<'a> Cpu<'a> {
   }
 
   fn iny(&mut self) {
-    self.y += 1;
+    self.y = self.y.wrapping_add(1);
     self.set_z_n_flags(self.y)
   }
 
@@ -427,12 +399,12 @@ impl<'a> Cpu<'a> {
   }
 
   fn dex(&mut self) {
-    self.x -= 1;
+    self.x = self.x.wrapping_sub(1);
     self.set_z_n_flags(self.x)
   }
 
   fn dey(&mut self) {
-    self.y -= 1;
+    self.y = self.y.wrapping_sub(1);
     self.set_z_n_flags(self.y)
   }
 
@@ -687,5 +659,45 @@ mod test {
 
     cpu.process();
     assert_eq!(bus[0x0306], 0xaa)
+  }
+
+  #[test]
+  fn test_0x69_adc_immediate() {
+    let mut bus = vec![0x69, 0x20, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 0x05;
+    cpu.status.set_c(true);
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x26);
+    assert_eq!(cpu.status.get_c(), false);
+    assert_eq!(cpu.status.get_z(), false)
+  }
+
+  #[test]
+  fn test_0x69_adc_immediate_negative() {
+    let mut bus = vec![0x69, 0x7f, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 0x08;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x87);
+    assert_eq!(cpu.status.get_c(), false);
+    assert_eq!(cpu.status.get_n(), true);
+    assert_eq!(cpu.status.get_z(), false)
+  }
+
+  #[test]
+  fn test_0x75_adc_zero_page_x_zero() {
+    let mut bus = vec![0x75, 0x02, 0x00, 0x07];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.x = 0x01;
+    cpu.a = 0xf9;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x00);
+    assert_eq!(cpu.status.get_c(), true);
+    assert_eq!(cpu.status.get_n(), false);
+    assert_eq!(cpu.status.get_z(), true)
   }
 }
