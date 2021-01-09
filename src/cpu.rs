@@ -10,7 +10,7 @@ const IRQ_BRK_VEC: u16 = 0xfffe;
 const HZ_NTSC: f32 = 1.0 / 1789773.0;
 const HZ_PAL: f32 = 1.0 / 1662607.0;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AddressMode {
   Implicit,
   Immediate, // #$00
@@ -151,6 +151,9 @@ impl<'a> Cpu<'a> {
         INY => self.iny(),
 
         ADC => self.adc(&op.mode),
+        AND => self.and(&op.mode),
+        ASL => self.asl(&op.mode),
+        BIT => self.bit(&op.mode),
 
         STA => self.sta(&op.mode),
         LDA => self.lda(&op.mode),
@@ -316,7 +319,9 @@ impl<'a> Cpu<'a> {
 
   // Logical
 
-  fn and(&mut self, val: u8) {
+  fn and(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
     self.a &= val;
     self.set_z_n_flags(self.a);
   }
@@ -331,10 +336,13 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.a);
   }
 
-  fn bit(&mut self, mem: &mut u8) {
-    self.status.set_z(self.a & *mem == 0);
-    self.status.set_v(check_bit(*mem, Bit::Six));
-    self.status.set_n(check_bit(*mem, Bit::Seven));
+  fn bit(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
+
+    self.status.set_z(self.a & val == 0);
+    self.status.set_v(check_bit(val, Bit::Six));
+    self.status.set_n(check_bit(val, Bit::Seven));
   }
 
   // Arithmetic
@@ -410,10 +418,26 @@ impl<'a> Cpu<'a> {
 
   // Shifts
 
-  fn asl(&mut self, addr: &mut u8) {
-    self.status.set_c(check_bit(*addr, Bit::Seven));
-    *addr <<= 1;
-    self.set_z_n_flags(*addr);
+  fn asl(&mut self, mode: &AddressMode) {
+    let mut addr: u16 = 0;
+    let mut val: u8;
+
+    if *mode == Implicit {
+      val = self.a
+    } else {
+      addr = self.get_operand_address(mode);
+      val = self.read(addr);
+    }
+
+    self.status.set_c(check_bit(val, Bit::Seven));
+    val <<= 1;
+    self.set_z_n_flags(val);
+
+    if *mode == Implicit {
+      self.a = val;
+    } else {
+      self.write(addr, val);
+    }
   }
 
   fn lsr(&mut self, addr: &mut u8) {
@@ -699,5 +723,47 @@ mod test {
     assert_eq!(cpu.status.get_c(), true);
     assert_eq!(cpu.status.get_n(), false);
     assert_eq!(cpu.status.get_z(), true)
+  }
+
+  #[test]
+  fn test_0x39_and_absolute_y() {
+    let mut bus = vec![0; 0x1_0000];
+    bus[0] = 0x39;
+    bus[1] = 0x01;
+    bus[2] = 0x20;
+    bus[0x2003] = 0x0f;
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.y = 0x02;
+    cpu.a = 0xf9;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x09);
+    assert_eq!(cpu.status.get_n(), false);
+    assert_eq!(cpu.status.get_z(), false)
+  }
+
+  #[test]
+  fn test_0x0a_asl_accumulator() {
+    let mut bus = vec![0x0a, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 0x80;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x00);
+    assert_eq!(cpu.status.get_n(), false);
+    assert_eq!(cpu.status.get_z(), true);
+    assert_eq!(cpu.status.get_c(), true);
+  }
+
+  #[test]
+  fn test_0x24_bit_zero_page() {
+    let mut bus = vec![0x24, 0x03, 0x00, 0xf0];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 0xf0;
+
+    cpu.process();
+    assert_eq!(cpu.status.get_n(), true);
+    assert_eq!(cpu.status.get_v(), true);
+    assert_eq!(cpu.status.get_z(), false);
   }
 }

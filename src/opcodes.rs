@@ -107,6 +107,24 @@ lazy_static! {
     OpInfo::new(0x61, ADC, 2, 6, IndirectX),
     OpInfo::new(0x71, ADC, 2, 5/*+ add 1 cycle if page boundary crossed*/, IndirectY),
 
+    OpInfo::new(0x29, AND, 2, 2, Immediate),
+    OpInfo::new(0x25, AND, 2, 3, ZeroPage),
+    OpInfo::new(0x35, AND, 2, 4, ZeroPageX),
+    OpInfo::new(0x2d, AND, 3, 4, Absolute),
+    OpInfo::new(0x3d, AND, 3, 4/*+ add 1 cycle if page boundary crossed*/, AbsoluteX),
+    OpInfo::new(0x39, AND, 3, 4/*+ add 1 cycle if page boundary crossed*/, AbsoluteY),
+    OpInfo::new(0x21, AND, 2, 6, IndirectX),
+    OpInfo::new(0x31, AND, 2, 5/*+ add 1 cycle if page boundary crossed*/, IndirectY),
+
+    OpInfo::new(0x0a, ASL, 1, 2, Implicit), /* accumulator */
+    OpInfo::new(0x06, ASL, 2, 5, ZeroPage),
+    OpInfo::new(0x16, ASL, 2, 6, ZeroPageX),
+    OpInfo::new(0x0e, ASL, 3, 6, Absolute),
+    OpInfo::new(0x1e, ASL, 3, 7, AbsoluteX),
+
+    OpInfo::new(0x24, BIT, 2, 3, ZeroPage),
+    OpInfo::new(0x2c, BIT, 3, 4, Absolute),
+
     OpInfo::new(0x85, STA, 2, 3, ZeroPage),
     OpInfo::new(0x95, STA, 2, 4, ZeroPageX),
     OpInfo::new(0x8d, STA, 3, 4, Absolute),
