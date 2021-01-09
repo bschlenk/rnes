@@ -141,5 +141,6 @@ mod tests {
     s.set_n(true);
 
     assert_eq!(0b1000_0000, s.bits);
+    assert_eq!(true, s.get_n());
   }
 }
