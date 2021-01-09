@@ -125,6 +125,31 @@ lazy_static! {
     OpInfo::new(0x24, BIT, 2, 3, ZeroPage),
     OpInfo::new(0x2c, BIT, 3, 4, Absolute),
 
+    // Branching Instructions
+
+    // Branches are dependant on the status of the flag bits when the op code is
+    // encountered. A branch not taken requires two machine cycles. Add one if
+    // the branch is taken and add one more if the branch crosses a page boundary.
+
+    OpInfo::new(0x10, BPL, 2, 2, Implicit),
+    OpInfo::new(0x30, BMI, 2, 2, Implicit),
+    OpInfo::new(0x50, BVC, 2, 2, Implicit),
+    OpInfo::new(0x70, BVS, 2, 2, Implicit),
+    OpInfo::new(0x90, BCC, 2, 2, Implicit),
+    OpInfo::new(0xb0, BCS, 2, 2, Implicit),
+    OpInfo::new(0xd0, BNE, 2, 2, Implicit),
+    OpInfo::new(0xf0, BEQ, 2, 2, Implicit),
+
+    // Flag (Processor Status) Instructions
+
+    OpInfo::new(0x18, CLC, 1, 2, Implicit),
+    OpInfo::new(0x38, SEC, 1, 2, Implicit),
+    OpInfo::new(0x58, CLI, 1, 2, Implicit),
+    OpInfo::new(0x78, SEI, 1, 2, Implicit),
+    OpInfo::new(0xb8, CLV, 1, 2, Implicit),
+    OpInfo::new(0xd8, CLD, 1, 2, Implicit),
+    OpInfo::new(0xf8, SED, 1, 2, Implicit),
+
     OpInfo::new(0x85, STA, 2, 3, ZeroPage),
     OpInfo::new(0x95, STA, 2, 4, ZeroPageX),
     OpInfo::new(0x8d, STA, 3, 4, Absolute),

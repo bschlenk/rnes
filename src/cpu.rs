@@ -133,7 +133,7 @@ impl<'a> Cpu<'a> {
 
   fn process(&mut self) {
     loop {
-      let opcode = self.read(self.pc);
+      let opcode = self.read_pc();
       self.inc_pc(1);
 
       let op = OPCODES_MAP[opcode as usize];
@@ -155,6 +155,23 @@ impl<'a> Cpu<'a> {
         ASL => self.asl(&op.mode),
         BIT => self.bit(&op.mode),
 
+        BPL => self.bpl(),
+        BMI => self.bmi(),
+        BVC => self.bvc(),
+        BVS => self.bvs(),
+        BCC => self.bcc(),
+        BCS => self.bcs(),
+        BNE => self.bne(),
+        BEQ => self.beq(),
+
+        CLC => self.status.set_c(false),
+        SEC => self.status.set_c(true),
+        CLI => self.status.set_i(false),
+        SEI => self.status.set_i(true),
+        CLV => self.status.set_v(false),
+        CLD => self.status.set_d(false),
+        SED => self.status.set_d(true),
+
         STA => self.sta(&op.mode),
         LDA => self.lda(&op.mode),
 
@@ -167,6 +184,14 @@ impl<'a> Cpu<'a> {
 
   fn inc_pc(&mut self, inc: u8) {
     self.pc += inc as u16;
+  }
+
+  fn read_pc(&self) -> u8 {
+    self.read(self.pc)
+  }
+
+  fn read_pc_u16(&self) -> u16 {
+    self.read_u16(self.pc)
   }
 
   // TODO: remove these methods, just hardcode reading/writing from bus
@@ -217,18 +242,18 @@ impl<'a> Cpu<'a> {
     match mode {
       Implicit => panic!("implicit address mode has no operand"),
       Immediate => self.pc,
-      ZeroPage => self.bus.read(self.pc) as u16,
-      ZeroPageX => self.bus.read(self.pc).wrapping_add(self.x) as u16,
-      ZeroPageY => self.bus.read(self.pc).wrapping_add(self.y) as u16,
-      Absolute => self.bus.read_u16(self.pc),
-      AbsoluteX => self.bus.read_u16(self.pc).wrapping_add(self.x as u16),
-      AbsoluteY => self.bus.read_u16(self.pc).wrapping_add(self.y as u16),
+      ZeroPage => self.read_pc() as u16,
+      ZeroPageX => self.read_pc().wrapping_add(self.x) as u16,
+      ZeroPageY => self.read_pc().wrapping_add(self.y) as u16,
+      Absolute => self.read_pc_u16(),
+      AbsoluteX => self.read_pc_u16().wrapping_add(self.x as u16),
+      AbsoluteY => self.read_pc_u16().wrapping_add(self.y as u16),
       IndirectX => self
         .bus
-        .wrapping_read_u16(self.bus.read(self.pc).wrapping_add(self.x)),
+        .wrapping_read_u16(self.read_pc().wrapping_add(self.x)),
       IndirectY => self
         .bus
-        .wrapping_read_u16(self.read(self.pc))
+        .wrapping_read_u16(self.read_pc())
         .wrapping_add(self.y as u16),
     }
   }
@@ -481,82 +506,52 @@ impl<'a> Cpu<'a> {
 
   // Branches
 
-  fn bcc(&mut self, val: u8) {
+  fn bcc(&mut self) {
     if !self.status.get_c() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn bcs(&mut self, val: u8) {
+  fn bcs(&mut self) {
     if self.status.get_c() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn beq(&mut self, val: u8) {
+  fn beq(&mut self) {
     if self.status.get_z() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn bmi(&mut self, val: u8) {
+  fn bmi(&mut self) {
     if self.status.get_n() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn bne(&mut self, val: u8) {
+  fn bne(&mut self) {
     if !self.status.get_z() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn bpl(&mut self, val: u8) {
+  fn bpl(&mut self) {
     if !self.status.get_n() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn bvc(&mut self, val: u8) {
+  fn bvc(&mut self) {
     if !self.status.get_v() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
   }
 
-  fn bvs(&mut self, val: u8) {
+  fn bvs(&mut self) {
     if self.status.get_v() {
-      self.pc += val as u16;
+      self.pc += self.read_pc() as u16;
     }
-  }
-
-  // Status Flag Changes
-
-  fn clc(&mut self) {
-    self.status.set_c(false);
-  }
-
-  fn cld(&mut self) {
-    self.status.set_d(false);
-  }
-
-  fn cli(&mut self) {
-    self.status.set_i(false);
-  }
-
-  fn clv(&mut self) {
-    self.status.set_v(false);
-  }
-
-  fn sec(&mut self) {
-    self.status.set_c(true);
-  }
-
-  fn sed(&mut self) {
-    self.status.set_d(true);
-  }
-
-  fn sei(&mut self) {
-    self.status.set_i(true);
   }
 
   // System Functions
@@ -765,5 +760,15 @@ mod test {
     assert_eq!(cpu.status.get_n(), true);
     assert_eq!(cpu.status.get_v(), true);
     assert_eq!(cpu.status.get_z(), false);
+  }
+
+  #[test]
+  fn test_set_carry_branch_carry() {
+    // set carry, branch on carry, load 0xfa into a
+    let mut bus = vec![0x38, 0xb0, 0x01, 0x00, 0xa9, 0xfa, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+
+    cpu.process();
+    assert_eq!(cpu.a, 0xfa);
   }
 }
