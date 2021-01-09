@@ -164,6 +164,8 @@ impl<'a> Cpu<'a> {
         BNE => self.bne(),
         BEQ => self.beq(),
 
+        CMP => self.cmp(&op.mode),
+
         CLC => self.status.set_c(false),
         SEC => self.status.set_c(true),
         CLI => self.status.set_i(false),
@@ -398,10 +400,11 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.a);
   }
 
-  fn cmp(&mut self, val: u8) {
+  fn cmp(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
     self.status.set_c(self.a >= val);
-    self.status.set_z(self.a == val);
-    self.status.set_n(self.a > (Bit::Seven as u8));
+    self.set_z_n_flags(self.a.wrapping_sub(val));
   }
 
   // N,Z,C
@@ -770,5 +773,18 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0xfa);
+  }
+
+  #[test]
+  fn test_0xc9_cmp_immediate() {
+    let mut bus = vec![0xc9, 0x0a, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 0x09;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x09); // didn't modify
+    assert_eq!(cpu.status.get_z(), false);
+    assert_eq!(cpu.status.get_c(), false);
+    assert_eq!(cpu.status.get_n(), true);
   }
 }

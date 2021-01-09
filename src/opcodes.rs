@@ -140,6 +140,15 @@ lazy_static! {
     OpInfo::new(0xd0, BNE, 2, 2, Implicit),
     OpInfo::new(0xf0, BEQ, 2, 2, Implicit),
 
+    OpInfo::new(0xc9, CMP, 2, 2, Immediate),
+    OpInfo::new(0xc5, CMP, 2, 3, ZeroPage),
+    OpInfo::new(0xd5, CMP, 2, 4, ZeroPageX),
+    OpInfo::new(0xcd, CMP, 3, 4, Absolute),
+    OpInfo::new(0xdd, CMP, 3, 4/*+ add 1 cycle if page boundary crossed*/, AbsoluteX),
+    OpInfo::new(0xd9, CMP, 3, 4/*+ add 1 cycle if page boundary crossed*/, AbsoluteY),
+    OpInfo::new(0xc1, CMP, 2, 6, IndirectX),
+    OpInfo::new(0xd1, CMP, 2, 5/*+ add 1 cycle if page boundary crossed*/, IndirectY),
+
     // Flag (Processor Status) Instructions
 
     OpInfo::new(0x18, CLC, 1, 2, Implicit),
