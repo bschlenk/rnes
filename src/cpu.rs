@@ -164,7 +164,9 @@ impl<'a> Cpu<'a> {
         BNE => self.bne(),
         BEQ => self.beq(),
 
-        CMP => self.cmp(&op.mode),
+        CMP => self.cmp(&op.mode, self.a),
+        CPX => self.cmp(&op.mode, self.x),
+        CPY => self.cmp(&op.mode, self.y),
 
         CLC => self.status.set_c(false),
         SEC => self.status.set_c(true),
@@ -400,17 +402,12 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.a);
   }
 
-  fn cmp(&mut self, mode: &AddressMode) {
+  fn cmp(&mut self, mode: &AddressMode, with: u8) {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr);
-    self.status.set_c(self.a >= val);
-    self.set_z_n_flags(self.a.wrapping_sub(val));
+    self.status.set_c(with >= val);
+    self.set_z_n_flags(with.wrapping_sub(val));
   }
-
-  // N,Z,C
-  fn cpx(&mut self, mem: &u8) {}
-  // N,Z,C
-  fn cpy(&mut self, mem: &u8) {}
 
   // Increments & Decrements
 
@@ -785,6 +782,32 @@ mod test {
     assert_eq!(cpu.a, 0x09); // didn't modify
     assert_eq!(cpu.status.get_z(), false);
     assert_eq!(cpu.status.get_c(), false);
+    assert_eq!(cpu.status.get_n(), true);
+  }
+
+  #[test]
+  fn test_0xe0_cpx_immediate() {
+    let mut bus = vec![0xe0, 0x0a, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.x = 0x0a;
+
+    cpu.process();
+    assert_eq!(cpu.x, 0x0a); // didn't modify
+    assert_eq!(cpu.status.get_z(), true);
+    assert_eq!(cpu.status.get_c(), true);
+    assert_eq!(cpu.status.get_n(), false);
+  }
+
+  #[test]
+  fn test_0xc0_cpy_immediate() {
+    let mut bus = vec![0xc0, 0x0a, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.y = 0xfa;
+
+    cpu.process();
+    assert_eq!(cpu.y, 0xfa); // didn't modify
+    assert_eq!(cpu.status.get_z(), false);
+    assert_eq!(cpu.status.get_c(), true);
     assert_eq!(cpu.status.get_n(), true);
   }
 }
