@@ -1,8 +1,9 @@
 use crate::bit::*;
 use crate::bus::Bus;
-use crate::opcodes::{OpCode::*, OpInfo, OPCODES_MAP};
+use crate::opcodes::{OpCode::*, OPCODES_MAP};
 use crate::status::*;
 
+const STACK_PAGE: u16 = 0x0100;
 const NMI_VEC: u16 = 0xfffa;
 const RESET_VEC: u16 = 0xfffc;
 const IRQ_BRK_VEC: u16 = 0xfffe;
@@ -112,7 +113,7 @@ pub struct Cpu<'a> {
 }
 
 impl<'a> Cpu<'a> {
-  fn new(bus: &'a mut dyn Bus) -> Cpu<'a> {
+  pub fn new(bus: &'a mut dyn Bus) -> Cpu<'a> {
     Cpu {
       bus,
       pc: 0,
@@ -124,7 +125,7 @@ impl<'a> Cpu<'a> {
     }
   }
 
-  fn reset(&mut self) {
+  pub fn reset(&mut self) {
     self.pc = self.read_u16(RESET_VEC);
     self.s = 0xff;
     self.a = 0;
@@ -133,7 +134,7 @@ impl<'a> Cpu<'a> {
     self.status = Status::new();
   }
 
-  fn process(&mut self) {
+  pub fn process(&mut self) {
     loop {
       let opcode = self.read_pc();
       self.inc_pc(1);
@@ -142,6 +143,8 @@ impl<'a> Cpu<'a> {
 
       match op.op {
         BRK => return,
+        NOP => {}
+        RTI => self.rti(),
 
         TAX => self.tax(),
         TXA => self.txa(),
@@ -152,10 +155,23 @@ impl<'a> Cpu<'a> {
         DEY => self.dey(),
         INY => self.iny(),
 
+        TXS => self.txs(),
+        TSX => self.tsx(),
+        PHA => self.pha(),
+        PLA => self.pla(),
+        PHP => self.php(),
+        PLP => self.plp(),
+
         ADC => self.adc(&op.mode),
+        SBC => self.sbc(&op.mode),
         AND => self.and(&op.mode),
-        ASL => self.asl(&op.mode),
+        ORA => self.ora(&op.mode),
         BIT => self.bit(&op.mode),
+
+        ASL => self.asl(&op.mode),
+        LSR => self.lsr(&op.mode),
+        ROL => self.rol(&op.mode),
+        ROR => self.ror(&op.mode),
 
         BPL => self.bpl(),
         BMI => self.bmi(),
@@ -166,9 +182,18 @@ impl<'a> Cpu<'a> {
         BNE => self.bne(),
         BEQ => self.beq(),
 
+        JMP => self.jmp(&op.mode),
+
+        JSR => self.jsr(),
+        RTS => self.rts(),
+
         CMP => self.cmp(&op.mode, self.a),
         CPX => self.cmp(&op.mode, self.x),
         CPY => self.cmp(&op.mode, self.y),
+
+        DEC => self.dec(&op.mode),
+        INC => self.inc(&op.mode),
+        EOR => self.eor(&op.mode),
 
         CLC => self.status.set_c(false),
         SEC => self.status.set_c(true),
@@ -178,8 +203,12 @@ impl<'a> Cpu<'a> {
         CLD => self.status.set_d(false),
         SED => self.status.set_d(true),
 
-        STA => self.sta(&op.mode),
         LDA => self.lda(&op.mode),
+        LDX => self.ldx(&op.mode),
+        LDY => self.ldy(&op.mode),
+        STA => self.sta(&op.mode),
+        STX => self.stx(&op.mode),
+        STY => self.sty(&op.mode),
 
         _ => panic!("instruction {:?} not implemented", op),
       }
@@ -218,13 +247,13 @@ impl<'a> Cpu<'a> {
   }
 
   fn push(&mut self, val: u8) {
-    self.write(0x0100 & (self.s as u16), val);
+    self.write(STACK_PAGE | (self.s as u16), val);
     self.s = self.s.wrapping_sub(1);
   }
 
   fn pull(&mut self) -> u8 {
     self.s = self.s.wrapping_add(1);
-    self.read(0x0100 & (self.s as u16))
+    self.read(STACK_PAGE | (self.s as u16))
   }
 
   fn push_u16(&mut self, val: u16) {
@@ -254,6 +283,16 @@ impl<'a> Cpu<'a> {
       Absolute => self.read_pc_u16(),
       AbsoluteX => self.read_pc_u16().wrapping_add(self.x as u16),
       AbsoluteY => self.read_pc_u16().wrapping_add(self.y as u16),
+      Indirect => {
+        // Indirect is only used by JMP, and contains a bug - there is no carry,
+        // so reading from the last byte of a page rolls over to the first byte
+        // of that page.
+        let lo_addr = self.read_pc_u16();
+        let (lo_tmp, hi_tmp) = split_u16(lo_addr);
+        let hi_addr = make_u16(lo_tmp.wrapping_add(1), hi_tmp);
+
+        make_u16(self.read(lo_addr), self.read(hi_addr))
+      }
       IndirectX => self
         .bus
         .wrapping_read_u16(self.read_pc().wrapping_add(self.x)),
@@ -266,7 +305,6 @@ impl<'a> Cpu<'a> {
 
   // Load / Store Operations
 
-  // first 3 set negative & zero
   fn lda(&mut self, mode: &AddressMode) {
     let addr = self.get_operand_address(&mode);
     let val = self.bus.read(addr);
@@ -275,14 +313,20 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(val);
   }
 
-  fn ldx(&mut self, mem: &u8) {
-    self.x = *mem;
-    self.set_z_n_flags(self.x);
+  fn ldx(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.bus.read(addr);
+
+    self.x = val;
+    self.set_z_n_flags(val);
   }
 
-  fn ldy(&mut self, mem: &u8) {
-    self.y = *mem;
-    self.set_z_n_flags(self.y);
+  fn ldy(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.bus.read(addr);
+
+    self.y = val;
+    self.set_z_n_flags(val);
   }
 
   fn sta(&mut self, mode: &AddressMode) {
@@ -290,12 +334,14 @@ impl<'a> Cpu<'a> {
     self.write(addr, self.a);
   }
 
-  fn stx(&mut self, mem: &mut u8) {
-    *mem = self.x;
+  fn stx(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    self.write(addr, self.x);
   }
 
-  fn sty(&mut self, mem: &mut u8) {
-    *mem = self.y;
+  fn sty(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    self.write(addr, self.y);
   }
 
   // Register Transfers
@@ -322,13 +368,13 @@ impl<'a> Cpu<'a> {
 
   // Stack Operations
 
+  fn txs(&mut self) {
+    self.s = self.x;
+  }
+
   fn tsx(&mut self) {
     self.x = self.s;
     self.set_z_n_flags(self.x);
-  }
-
-  fn txs(&mut self) {
-    self.s = self.x;
   }
 
   fn pha(&mut self) {
@@ -357,12 +403,16 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.a);
   }
 
-  fn eor(&mut self, val: u8) {
+  fn eor(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
     self.a ^= val;
     self.set_z_n_flags(self.a);
   }
 
-  fn ora(&mut self, val: u8) {
+  fn ora(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
     self.a |= val;
     self.set_z_n_flags(self.a);
   }
@@ -381,7 +431,16 @@ impl<'a> Cpu<'a> {
   fn adc(&mut self, mode: &AddressMode) {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr);
+    self.add_to_a(val);
+  }
 
+  fn sbc(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
+    self.add_to_a((val as i8).wrapping_neg().wrapping_sub(1) as u8)
+  }
+
+  fn add_to_a(&mut self, val: u8) {
     let initial_a = self.a;
     self.a = self
       .a
@@ -394,16 +453,6 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.a);
   }
 
-  fn sbc(&mut self, val: u8) {
-    let initial_acc = self.a;
-    self.a = self.a - val - (1 - self.status.get_c() as u8);
-    self.status.set_c(initial_acc < self.a);
-    self
-      .status
-      .set_v(self.status.get_c() as u8 ^ (check_bit(initial_acc, Bit::Seven) as u8) != 0);
-    self.set_z_n_flags(self.a);
-  }
-
   fn cmp(&mut self, mode: &AddressMode, with: u8) {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr);
@@ -413,9 +462,11 @@ impl<'a> Cpu<'a> {
 
   // Increments & Decrements
 
-  fn inc(&mut self, mem: &mut u8) {
-    *mem += 1;
-    self.set_z_n_flags(*mem);
+  fn inc(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr).wrapping_add(1);
+    self.write(addr, val);
+    self.set_z_n_flags(val);
   }
 
   fn inx(&mut self) {
@@ -428,9 +479,11 @@ impl<'a> Cpu<'a> {
     self.set_z_n_flags(self.y)
   }
 
-  fn dec(&mut self, mem: &mut u8) {
-    *mem -= 1;
-    self.set_z_n_flags(*mem);
+  fn dec(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr).wrapping_sub(1);
+    self.write(addr, val);
+    self.set_z_n_flags(val);
   }
 
   fn dex(&mut self) {
@@ -467,92 +520,129 @@ impl<'a> Cpu<'a> {
     }
   }
 
-  fn lsr(&mut self, addr: &mut u8) {
-    self.status.set_c(check_bit(*addr, Bit::Zero));
-    *addr >>= 1;
-    self.set_z_n_flags(*addr);
+  fn lsr(&mut self, mode: &AddressMode) {
+    let mut addr: u16 = 0;
+    let mut val: u8;
+
+    if *mode == Accumulator {
+      val = self.a
+    } else {
+      addr = self.get_operand_address(mode);
+      val = self.read(addr);
+    }
+
+    self.status.set_c(check_bit(val, Bit::Zero));
+    val >>= 1;
+    self.set_z_n_flags(val);
+
+    if *mode == Accumulator {
+      self.a = val;
+    } else {
+      self.write(addr, val);
+    }
   }
 
-  fn rol(&mut self, addr: &mut u8) {
-    // Rotate Left 	N,Z,C
+  fn rol(&mut self, mode: &AddressMode) {
+    let mut addr: u16 = 0;
+    let mut val: u8;
+
+    if *mode == Accumulator {
+      val = self.a
+    } else {
+      addr = self.get_operand_address(mode);
+      val = self.read(addr);
+    }
+
     let carry = self.status.get_c() as u8;
-    self.status.set_c(check_bit(*addr, Bit::Seven));
-    *addr <<= 1;
-    *addr |= carry;
-    self.set_z_n_flags(*addr);
+    self.status.set_c(check_bit(val, Bit::Seven));
+    val <<= 1;
+    val |= carry;
+    self.set_z_n_flags(val);
+
+    if *mode == Accumulator {
+      self.a = val;
+    } else {
+      self.write(addr, val);
+    }
   }
 
-  fn ror(&mut self, addr: &mut u8) {
+  fn ror(&mut self, mode: &AddressMode) {
+    let mut addr: u16 = 0;
+    let mut val: u8;
+
+    if *mode == Accumulator {
+      val = self.a
+    } else {
+      addr = self.get_operand_address(mode);
+      val = self.read(addr);
+    }
+
     let carry = self.status.get_c() as u8;
-    self.status.set_c(check_bit(*addr, Bit::Zero));
-    *addr >>= 1;
-    *addr |= carry << 7;
-    self.set_z_n_flags(*addr);
+    self.status.set_c(check_bit(val, Bit::Zero));
+    val >>= 1;
+    val |= carry << 7;
+    self.set_z_n_flags(val);
+
+    if *mode == Accumulator {
+      self.a = val;
+    } else {
+      self.write(addr, val);
+    }
   }
 
   // Jumps & Calls
 
-  fn jmp(&mut self, addr: u16) {
+  fn jmp(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
     self.pc = addr;
   }
 
   fn jsr(&mut self) {
-    // Jump to a subroutine
-    self.push_u16(self.pc + 2);
-    self.pc = self.read_u16(self.pc + 1);
+    self.push_u16(self.pc + 1);
+    self.pc = self.read_u16(self.pc);
   }
 
   fn rts(&mut self) {
-    self.pc = self.pull_u16();
+    self.pc = self.pull_u16() + 1;
   }
 
   // Branches
 
   fn bcc(&mut self) {
-    if !self.status.get_c() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(!self.status.get_c());
   }
 
   fn bcs(&mut self) {
-    if self.status.get_c() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(self.status.get_c());
   }
 
   fn beq(&mut self) {
-    if self.status.get_z() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(self.status.get_z());
   }
 
   fn bmi(&mut self) {
-    if self.status.get_n() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(self.status.get_n());
   }
 
   fn bne(&mut self) {
-    if !self.status.get_z() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(!self.status.get_z());
   }
 
   fn bpl(&mut self) {
-    if !self.status.get_n() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(!self.status.get_n());
   }
 
   fn bvc(&mut self) {
-    if !self.status.get_v() {
-      self.pc += self.read_pc() as u16;
-    }
+    self.branch(!self.status.get_v());
   }
 
   fn bvs(&mut self) {
-    if self.status.get_v() {
-      self.pc += self.read_pc() as u16;
+    self.branch(self.status.get_v());
+  }
+
+  fn branch(&mut self, condition: bool) {
+    if condition {
+      self.pc = self.pc.wrapping_add((self.read_pc() as i8) as u16);
     }
   }
 
@@ -570,10 +660,6 @@ impl<'a> Cpu<'a> {
   fn rti(&mut self) {
     self.status.bits = self.pull();
     self.pc = self.pull_u16();
-  }
-
-  fn nop(&mut self) {
-    // nothing
   }
 }
 
@@ -811,5 +897,16 @@ mod test {
     assert_eq!(cpu.status.get_z(), false);
     assert_eq!(cpu.status.get_c(), true);
     assert_eq!(cpu.status.get_n(), true);
+  }
+
+  #[test]
+  fn test_dec_eor() {
+    let mut bus = vec![0xc6, 0x05, 0x45, 0x05, 0x00, 0x08];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.a = 0x03;
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x04);
+    assert_eq!(bus[5], 0x07);
   }
 }
