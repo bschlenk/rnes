@@ -13,15 +13,17 @@ const HZ_PAL: f32 = 1.0 / 1662607.0;
 #[derive(Debug, PartialEq)]
 pub enum AddressMode {
   Implicit,
-  Immediate, // #$00
-  ZeroPage,  // $00
-  ZeroPageX, // $00,X
-  ZeroPageY, // $00,Y
-  Absolute,  // $0000
-  AbsoluteX, // $0000,X
-  AbsoluteY, // $0000,Y
-  IndirectX, // ($00,X)
-  IndirectY, // ($00),Y
+  Accumulator, // A
+  Immediate,   // #$00
+  ZeroPage,    // $00
+  ZeroPageX,   // $00,X
+  ZeroPageY,   // $00,Y
+  Absolute,    // $0000
+  AbsoluteX,   // $0000,X
+  AbsoluteY,   // $0000,Y
+  Indirect,    // ($0000)
+  IndirectX,   // ($00,X)
+  IndirectY,   // ($00),Y
 }
 
 use AddressMode::*;
@@ -244,7 +246,7 @@ impl<'a> Cpu<'a> {
 
   fn get_operand_address(&self, mode: &AddressMode) -> u16 {
     match mode {
-      Implicit => panic!("implicit address mode has no operand"),
+      Implicit | Accumulator => panic!("{:?} address mode has no operand", mode),
       Immediate => self.pc,
       ZeroPage => self.read_pc() as u16,
       ZeroPageX => self.read_pc().wrapping_add(self.x) as u16,
@@ -447,7 +449,7 @@ impl<'a> Cpu<'a> {
     let mut addr: u16 = 0;
     let mut val: u8;
 
-    if *mode == Implicit {
+    if *mode == Accumulator {
       val = self.a
     } else {
       addr = self.get_operand_address(mode);
@@ -458,7 +460,7 @@ impl<'a> Cpu<'a> {
     val <<= 1;
     self.set_z_n_flags(val);
 
-    if *mode == Implicit {
+    if *mode == Accumulator {
       self.a = val;
     } else {
       self.write(addr, val);
