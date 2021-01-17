@@ -1,4 +1,5 @@
 use crate::bit::{make_u16, split_u16};
+use crate::rom::{Mirroring, Rom};
 
 pub trait Bus {
   fn read(&self, addr: u16) -> u8;
@@ -38,6 +39,66 @@ impl Bus for Vec<u8> {
   }
 }
 
+pub struct DataBus {
+  ram: [u8; 2048],
+  rom: Rom,
+}
+
+impl DataBus {
+  pub fn new(rom: Rom) -> Self {
+    Self {
+      ram: [0; 2048],
+      rom,
+    }
+  }
+
+  fn read_prg_rom(&self, mut addr: u16) -> u8 {
+    addr -= 0x8000;
+    if self.rom.prg_rom.len() == 0x4000 && addr >= 0x4000 {
+      // mirror if needed
+      addr = addr % 0x4000;
+    }
+    self.rom.prg_rom[addr as usize]
+  }
+}
+
+impl Bus for DataBus {
+  fn read(&self, addr: u16) -> u8 {
+    match addr {
+      0..=0x1fff => {
+        let mirrored = addr & 0b111_1111_1111;
+        self.ram[mirrored as usize]
+      }
+      0x2000..=0x3fff => {
+        let _mirrored = addr & 0b10_0000_0000_0111;
+        todo!("PPU not implemented")
+      }
+      0x8000..=0xFFFF => self.read_prg_rom(addr),
+      _ => {
+        println!("Ignoring memory access for {}", addr);
+        0
+      }
+    }
+  }
+
+  fn write(&mut self, addr: u16, val: u8) {
+    match addr {
+      0..=0x1fff => {
+        let mirrored = addr & 0b111_1111_1111;
+        self.ram[mirrored as usize] = val;
+      }
+      0x2000..=0x3fff => {
+        let _mirrored = addr & 0b10_0000_0000_0111;
+        todo!("PPU not implemented")
+      }
+      0x8000..=0xFFFF => panic!("Attempted to write to ROM"),
+      _ => {
+        println!("Ignoring memory write for {}", addr);
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -64,5 +125,23 @@ mod test {
     bus[0xff] = 0xcd;
 
     assert_eq!(bus.wrapping_read_u16(0xff), 0xabcd)
+  }
+
+  #[test]
+  fn test_data_bus_mirroring() {
+    let rom = Rom {
+      prg_rom: vec![0; 2048],
+      chr_rom: vec![0; 1024],
+      mirroring: Mirroring::Horizontal,
+      battery_backed_ram: false,
+      trainer: None,
+      mapper: 0,
+    };
+
+    let mut bus = DataBus::new(rom);
+
+    bus.write(0, 0xab);
+
+    assert_eq!(bus.read(0x800), 0xab);
   }
 }
