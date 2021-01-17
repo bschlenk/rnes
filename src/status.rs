@@ -1,12 +1,17 @@
 use crate::bit::Bit;
 
+#[derive(Copy, Clone)]
 pub struct Status {
   pub bits: u8,
 }
 
 impl Status {
   pub fn new() -> Status {
-    Status { bits: 0 }
+    Status { bits: 0b0010_0100 }
+  }
+
+  pub fn clear(&mut self) {
+    self.bits = 0b0000_0000;
   }
 
   /**
@@ -41,6 +46,22 @@ impl Status {
   }
 
   /**
+   * Break 2
+   *
+   * The break command bit is set when a BRK instruction has been executed and
+   * an interrupt has been generated to process it.
+   *
+   * http://wiki.nesdev.com/w/index.php/Status_flags#The_B_flag
+   */
+  pub fn get_b2(&self) -> bool {
+    self.get_bit(Bit::Five)
+  }
+
+  pub fn set_b2(&mut self, val: bool) {
+    self.set_bit(Bit::Five, val);
+  }
+
+  /**
    * Break
    *
    * The break command bit is set when a BRK instruction has been executed and
@@ -57,10 +78,7 @@ impl Status {
   /**
    * Decimal (use BCD for arithmetics)
    *
-   * While the decimal mode flag is set the processor will obey the rules of
-   * Binary Coded Decimal (BCD) arithmetic during addition and subtraction.
-   * The flag can be explicitly set using 'Set Decimal Flag' (SED) and cleared
-   * with 'Clear Decimal Flag' (CLD).
+   * The NES allows this flag to be set, but essentially ignores it.
    */
   pub fn get_d(&self) -> bool {
     self.get_bit(Bit::Three)
@@ -136,8 +154,16 @@ mod tests {
   use super::*;
 
   #[test]
+  fn it_initializes_i_and_b2() {
+    let s = Status::new();
+    assert!(s.get_i(), "expected i");
+    assert!(s.get_b2(), "expected b2");
+  }
+
+  #[test]
   fn it_can_set_a_bit() {
     let mut s = Status::new();
+    s.clear();
     s.set_n(true);
 
     assert_eq!(0b1000_0000, s.bits);
