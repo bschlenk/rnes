@@ -144,6 +144,8 @@ impl<'a> Cpu<'a> {
 
       let op = OPCODES_MAP[opcode as usize];
 
+      let prev_pc = self.pc;
+
       match op.op {
         BRK => return,
         NOP => {}
@@ -216,7 +218,10 @@ impl<'a> Cpu<'a> {
         _ => panic!("instruction {:?} not implemented", op),
       }
 
-      self.inc_pc(op.len - 1);
+      // only increment pc if the op didn't do it for us, like a JMP
+      if prev_pc == self.pc {
+        self.inc_pc(op.len - 1);
+      }
     }
   }
 
@@ -645,7 +650,8 @@ impl<'a> Cpu<'a> {
 
   fn branch(&mut self, condition: bool) {
     if condition {
-      self.pc = self.pc.wrapping_add((self.read_pc() as i8) as u16);
+      // add 1 to skip over op
+      self.pc = 1 + self.pc.wrapping_add((self.read_pc() as i8) as u16);
     }
   }
 

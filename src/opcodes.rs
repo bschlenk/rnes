@@ -189,10 +189,10 @@ lazy_static! {
     OpInfo::new(0xd0, BNE, 2, 2, Implicit),
     OpInfo::new(0xf0, BEQ, 2, 2, Implicit),
 
-    OpInfo::new(0x4c, JMP, 1 /* 3 TODO should increment pc while reading operand */, 3, Absolute),
-    OpInfo::new(0x6c, JMP, 1 /* 3 */, 5, Indirect),
+    OpInfo::new(0x4c, JMP, 3, 3, Absolute),
+    OpInfo::new(0x6c, JMP, 3, 5, Indirect),
 
-    OpInfo::new(0x20, JSR, 1 /* 3 TODO should increment pc while reading operand */, 6, Absolute),
+    OpInfo::new(0x20, JSR, 3, 6, Absolute),
     OpInfo::new(0x60, RTS, 1, 6, Implicit),
 
     OpInfo::new(0xc9, CMP, 2, 2, Immediate),
