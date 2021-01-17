@@ -8,6 +8,9 @@ const NMI_VEC: u16 = 0xfffa;
 const RESET_VEC: u16 = 0xfffc;
 const IRQ_BRK_VEC: u16 = 0xfffe;
 
+// https://superuser.com/a/606770
+const STACK_RESET: u8 = 0xfd;
+
 const HZ_NTSC: f32 = 1.0 / 1789773.0;
 const HZ_PAL: f32 = 1.0 / 1662607.0;
 
@@ -127,7 +130,7 @@ impl<'a> Cpu<'a> {
 
   pub fn reset(&mut self) {
     self.pc = self.read_u16(RESET_VEC);
-    self.s = 0xff;
+    self.s = STACK_RESET;
     self.a = 0;
     self.x = 0;
     self.y = 0;
