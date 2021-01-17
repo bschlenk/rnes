@@ -464,7 +464,7 @@ impl<'a> Cpu<'a> {
     self.status.set_c(initial_a > self.a);
     self
       .status
-      .set_v(self.status.get_c() ^ (check_bit(initial_a, Bit::Seven)));
+      .set_v(check_bit((initial_a ^ self.a) & (val ^ self.a), Bit::Seven));
     self.set_z_n_flags(self.a);
   }
 
@@ -797,6 +797,18 @@ mod test {
     assert_eq!(cpu.a, 0x26);
     assert_eq!(cpu.status.get_c(), false);
     assert_eq!(cpu.status.get_z(), false)
+  }
+
+  #[test]
+  fn test_0x69_adc_immediate_overflow() {
+    // load 0x7f into A, add 0x7f to A
+    let mut bus = vec![0xa9, 0x7f, 0x69, 0x7f, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+
+    cpu.process();
+    assert_eq!(cpu.a, 0xfe);
+    assert_eq!(cpu.status.get_v(), true);
+    assert_eq!(cpu.status.get_n(), true)
   }
 
   #[test]
