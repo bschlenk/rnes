@@ -390,7 +390,11 @@ impl<'a> Cpu<'a> {
   }
 
   fn php(&mut self) {
-    self.push(self.status.bits);
+    // http://wiki.nesdev.com/w/index.php/Status_flags#The_B_flag
+    let mut status = self.status.clone();
+    status.set_b(true);
+    status.set_b2(true);
+    self.push(status.bits);
   }
 
   fn pla(&mut self) {
@@ -400,6 +404,9 @@ impl<'a> Cpu<'a> {
 
   fn plp(&mut self) {
     self.status.bits = self.pull();
+    // TODO: find the docs for these, I don't get it
+    self.status.set_b(false);
+    self.status.set_b2(true);
   }
 
   // Logical
@@ -669,6 +676,8 @@ impl<'a> Cpu<'a> {
   fn rti(&mut self) {
     self.status.bits = self.pull();
     self.pc = self.pull_u16();
+    self.status.set_b(false);
+    self.status.set_b2(true);
   }
 }
 
