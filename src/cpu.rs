@@ -144,6 +144,26 @@ impl<'a> Cpu<'a> {
 
       let op = OPCODES_MAP[opcode as usize];
 
+      println!(
+        "{:04X}  {:02X} {}  {:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        self.pc - 1,
+        opcode,
+        match op.len {
+          // TODO: remove this when BAD_OPCODE is gone
+          0 => "XX XX".to_string(),
+          1 => "     ".to_string(),
+          2 => format!("{:02X}   ", self.read_pc()),
+          3 => format!("{:02X} {:02X}", self.read_pc(), self.read(self.pc + 1)),
+          _ => panic!("length more than 3"),
+        },
+        op.to_assembly(self),
+        self.a,
+        self.x,
+        self.y,
+        self.status.bits,
+        self.s,
+      );
+
       let prev_pc = self.pc;
 
       match op.op {
@@ -229,28 +249,28 @@ impl<'a> Cpu<'a> {
     self.pc += inc as u16;
   }
 
-  fn read_pc(&self) -> u8 {
+  pub fn read_pc(&self) -> u8 {
     self.read(self.pc)
   }
 
-  fn read_pc_u16(&self) -> u16 {
+  pub fn read_pc_u16(&self) -> u16 {
     self.read_u16(self.pc)
   }
 
   // TODO: remove these methods, just hardcode reading/writing from bus
-  fn read(&self, addr: u16) -> u8 {
+  pub fn read(&self, addr: u16) -> u8 {
     self.bus.read(addr)
   }
 
-  fn read_u16(&self, addr: u16) -> u16 {
+  pub fn read_u16(&self, addr: u16) -> u16 {
     self.bus.read_u16(addr)
   }
 
-  fn write(&mut self, addr: u16, val: u8) {
+  pub fn write(&mut self, addr: u16, val: u8) {
     self.bus.write(addr, val);
   }
 
-  fn write_u16(&mut self, addr: u16, val: u16) {
+  pub fn write_u16(&mut self, addr: u16, val: u16) {
     self.bus.write_u16(addr, val)
   }
 
@@ -281,7 +301,7 @@ impl<'a> Cpu<'a> {
     self.status.set_n(check_bit(val, Bit::Seven));
   }
 
-  fn get_operand_address(&self, mode: &AddressMode) -> u16 {
+  pub fn get_operand_address(&self, mode: &AddressMode) -> u16 {
     match mode {
       Implicit | Accumulator => panic!("{:?} address mode has no operand", mode),
       Immediate => self.pc,

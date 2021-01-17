@@ -1,4 +1,9 @@
-use crate::cpu::AddressMode::{self, *};
+use crate::bit::add_signed;
+use crate::cpu::{
+  AddressMode::{self, *},
+  Cpu,
+};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum OpCode {
@@ -63,13 +68,22 @@ pub enum OpCode {
 
 use OpCode::*;
 
-#[derive(Debug)]
 pub struct OpInfo {
   pub id: u8,
   pub op: OpCode,
   pub len: u8,
   pub cycles: u8,
   pub mode: AddressMode,
+}
+
+impl fmt::Debug for OpInfo {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(
+      f,
+      "OpInfo {{ id: 0x{:02x}, op: {:?}, mode: {:?} }}",
+      self.id, self.op, self.mode
+    )
+  }
 }
 
 impl OpInfo {
@@ -81,6 +95,83 @@ impl OpInfo {
       cycles,
       mode,
     }
+  }
+
+  pub fn to_assembly(&self, cpu: &Cpu) -> String {
+    let op = match self.op {
+      BPL | BMI | BVC | BVS | BCC | BCS | BNE | BEQ => {
+        // print where we're going instead of offset
+        format!("${:04X}", 1 + add_signed(cpu.pc, cpu.read_pc()))
+      }
+      _ => match self.mode {
+        Implicit => "".to_string(),
+        Accumulator => "A".to_string(),
+        Immediate => format!("#${:02X}", cpu.read_pc()),
+        ZeroPage => format!(
+          "${:02X} = {:02X}",
+          cpu.read_pc(),
+          cpu.read(cpu.read_pc() as u16)
+        ),
+        ZeroPageX => {
+          let addr = cpu.get_operand_address(&ZeroPageX);
+          let val = cpu.read(addr);
+          format!("${:02X},X @ {:02X} = {:02X}", cpu.read_pc(), addr, val)
+        }
+        ZeroPageY => {
+          let addr = cpu.get_operand_address(&ZeroPageY);
+          let val = cpu.read(addr);
+          format!("${:02X},Y @ {:02X} = {:02X}", cpu.read_pc(), addr, val)
+        }
+        Absolute => match self.op {
+          JMP | JSR => format!("${:04X}", cpu.read_pc_u16()),
+          _ => format!(
+            "${:04X} = {:02X}",
+            cpu.read_pc_u16(),
+            cpu.read(cpu.read_pc_u16())
+          ),
+        },
+        AbsoluteX => {
+          let addr = cpu.get_operand_address(&AbsoluteX);
+          let val = cpu.read(addr);
+          format!("${:04X},X @ {:04X} = {:02X}", cpu.read_pc_u16(), addr, val)
+        }
+        AbsoluteY => {
+          let addr = cpu.get_operand_address(&AbsoluteY);
+          let val = cpu.read(addr);
+          format!("${:04X},Y @ {:04X} = {:02X}", cpu.read_pc_u16(), addr, val)
+        }
+        Indirect => format!(
+          "(${:04X}) = {:04X}",
+          cpu.read_pc_u16(),
+          cpu.get_operand_address(&Indirect)
+        ),
+        IndirectX => {
+          let pc = cpu.read_pc();
+          let addr = pc.wrapping_add(cpu.x);
+          let target = cpu.get_operand_address(&IndirectX);
+          let val = cpu.read(target);
+          format!(
+            "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
+            cpu.read_pc(),
+            addr,
+            target,
+            val
+          )
+        }
+        IndirectY => {
+          let pc = cpu.read_pc();
+          let addr = cpu.bus.wrapping_read_u16(pc);
+          let addrp = addr.wrapping_add(cpu.y as u16);
+          let val = cpu.read(addrp);
+          format!(
+            "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
+            pc, addr, addrp, val
+          )
+        }
+      },
+    };
+
+    format!("{:?} {}", self.op, op)
   }
 }
 
@@ -180,14 +271,14 @@ lazy_static! {
     // encountered. A branch not taken requires two machine cycles. Add one if
     // the branch is taken and add one more if the branch crosses a page boundary.
 
-    OpInfo::new(0x10, BPL, 2, 2, Implicit),
-    OpInfo::new(0x30, BMI, 2, 2, Implicit),
-    OpInfo::new(0x50, BVC, 2, 2, Implicit),
-    OpInfo::new(0x70, BVS, 2, 2, Implicit),
-    OpInfo::new(0x90, BCC, 2, 2, Implicit),
-    OpInfo::new(0xb0, BCS, 2, 2, Implicit),
-    OpInfo::new(0xd0, BNE, 2, 2, Implicit),
-    OpInfo::new(0xf0, BEQ, 2, 2, Implicit),
+    OpInfo::new(0x10, BPL, 2, 2, Immediate),
+    OpInfo::new(0x30, BMI, 2, 2, Immediate),
+    OpInfo::new(0x50, BVC, 2, 2, Immediate),
+    OpInfo::new(0x70, BVS, 2, 2, Immediate),
+    OpInfo::new(0x90, BCC, 2, 2, Immediate),
+    OpInfo::new(0xb0, BCS, 2, 2, Immediate),
+    OpInfo::new(0xd0, BNE, 2, 2, Immediate),
+    OpInfo::new(0xf0, BEQ, 2, 2, Immediate),
 
     OpInfo::new(0x4c, JMP, 3, 3, Absolute),
     OpInfo::new(0x6c, JMP, 3, 5, Indirect),
