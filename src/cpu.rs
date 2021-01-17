@@ -651,7 +651,7 @@ impl<'a> Cpu<'a> {
   fn branch(&mut self, condition: bool) {
     if condition {
       // add 1 to skip over op
-      self.pc = 1 + self.pc.wrapping_add((self.read_pc() as i8) as u16);
+      self.pc = 1 + add_signed(self.pc, self.read_pc());
     }
   }
 

@@ -35,6 +35,10 @@ pub fn write_u16(mem: &mut [u8], val: u16) {
   mem[1] = hi;
 }
 
+pub fn add_signed(val: u16, op: u8) -> u16 {
+  val.wrapping_add((op as i8) as u16)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -71,5 +75,13 @@ mod tests {
     let mut mem: [u8; 2] = [0; 2];
     write_u16(&mut mem, 0xabcd);
     assert_eq!(mem, [0xcd, 0xab]);
+  }
+
+  #[test]
+  fn it_can_add_signed() {
+    let x: u16 = 123;
+    let y: u8 = 0xfd; // -3
+
+    assert_eq!(add_signed(x, y), 120);
   }
 }
