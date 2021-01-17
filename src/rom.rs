@@ -1,9 +1,12 @@
 use crate::bit::{check_bit, Bit};
-use std::fs::File;
-use std::io::{self, prelude::*};
+use std::fs;
 
 // N,E,S,EOL
 const MAGIC: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A];
+const PRG_ROM_PAGE_SIZE: usize = 16 * 1024;
+const CHR_ROM_PAGE_SIZE: usize = 8 * 1024;
+// const PRG_RAM_PAGE_SIZE: usize = 8 * 1024;
+const TRAINER_SIZE: usize = 512;
 
 /*
 
@@ -19,52 +22,74 @@ const MAGIC: [u8; 4] = [0x4E, 0x45, 0x53, 0x1A];
 
 */
 
+#[derive(Debug, PartialEq)]
+pub enum Mirroring {
+  Horizontal,
+  Vertical,
+  FourScreen,
+}
+
 pub struct Rom {
-  mem: Vec<u8>,
-  prg_rom: u8,
-  chr_rom: u8,
-  mirroring: Mirroring,
-  battery_backed_ram: bool,
-  trainer: bool,
-  mapper: u8,
+  pub prg_rom: Vec<u8>,
+  pub chr_rom: Vec<u8>,
+  pub mirroring: Mirroring,
+  pub battery_backed_ram: bool,
+  pub trainer: Option<Vec<u8>>,
+  pub mapper: u8,
 }
 
 impl Rom {
-  pub fn load_from_file(path: &str) -> Result<Self, io::Error> {
-    let mut f = File::open(path)?;
-    let mut header: [u8; 16] = [0; 16];
-    f.read_exact(&mut header)?;
+  pub fn load_from_file(path: &str) -> Result<Self, String> {
+    let data = match fs::read(path) {
+      Ok(data) => data,
+      Err(error) => panic!(error),
+    };
 
-    if header[0..4] != MAGIC {
-      return Err(io::Error::new(io::ErrorKind::Other, "not an NES file"));
+    Self::new(data)
+  }
+
+  pub fn new(data: Vec<u8>) -> Result<Self, String> {
+    if &data[0..4] != MAGIC {
+      return Err("not an iNES file".to_string());
     }
 
-    let prg_rom = header[4];
-    let chr_rom = header[5];
-    let rom_control_1 = header[6];
-    let rom_control_2 = header[7];
-    let ram = header[8];
+    let rom_control_1 = data[6];
+    let rom_control_2 = data[7];
+
+    let ines_ver = (rom_control_2 >> 2) & 0b11;
+    if ines_ver != 0 {
+      return Err("iNES 2.0 not supported".to_string());
+    }
 
     let vertical_mirroring = check_bit(rom_control_1, Bit::Zero);
     let battery_backed_ram = check_bit(rom_control_1, Bit::One);
-    let trainer = check_bit(rom_control_1, Bit::Two);
-    let four_screen_mirroring = check_bit(rom_control_1, Bit::Four);
+    let has_trainer = check_bit(rom_control_1, Bit::Two);
+    let four_screen_mirroring = check_bit(rom_control_1, Bit::Three);
 
-    let mirroring = if four_screen_mirroring {
-      Mirroring::FourScreen
-    } else if vertical_mirroring {
-      Mirroring::Vertical
-    } else {
-      Mirroring::Horizontal
+    let mirroring = match (four_screen_mirroring, vertical_mirroring) {
+      (true, _) => Mirroring::FourScreen,
+      (false, true) => Mirroring::Vertical,
+      (false, false) => Mirroring::Horizontal,
     };
 
-    let mapper = rom_control_2 | (rom_control_1 >> 4);
+    let mapper = (rom_control_2 & 0b1111_0000) | (rom_control_1 >> 4);
 
-    let mut mem = Vec::new();
-    f.read_to_end(&mut mem)?;
+    let mut trainer = None;
+    if has_trainer {
+      trainer = Some(data[16..(16 + TRAINER_SIZE)].to_vec());
+    }
+
+    let prg_rom_len = data[4] as usize * PRG_ROM_PAGE_SIZE;
+    let chr_rom_len = data[5] as usize * CHR_ROM_PAGE_SIZE;
+    // let prg_ram_len = data[8] as usize * PRG_RAM_PAGE_SIZE;
+
+    let prg_rom_start = 16 + if has_trainer { TRAINER_SIZE } else { 0 };
+    let chr_rom_start = prg_rom_start + prg_rom_len;
+
+    let prg_rom = data[prg_rom_start..(prg_rom_start + prg_rom_len)].to_vec();
+    let chr_rom = data[chr_rom_start..(chr_rom_start + chr_rom_len)].to_vec();
 
     Ok(Rom {
-      mem,
       prg_rom,
       chr_rom,
       mirroring,
@@ -75,8 +100,15 @@ impl Rom {
   }
 }
 
-pub enum Mirroring {
-  Horizontal,
-  Vertical,
-  FourScreen,
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_load_file() {
+    let res = Rom::load_from_file("./roms/Balloon Fight (E).nes");
+    assert!(!res.is_err(), "the file should have loaded");
+    let rom = res.unwrap();
+    assert_eq!(rom.mirroring, Mirroring::Horizontal);
+  }
 }
