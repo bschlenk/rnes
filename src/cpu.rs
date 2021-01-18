@@ -145,7 +145,7 @@ impl<'a> Cpu<'a> {
       let op = OPCODES_MAP[opcode as usize];
 
       println!(
-        "{:04X}  {:02X} {}  {:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        "{:04X}  {:02X} {} {:<31}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
         self.pc - 1,
         opcode,
         match op.len {
@@ -217,7 +217,9 @@ impl<'a> Cpu<'a> {
         CPY => self.cmp(&op.mode, self.y),
 
         DEC => self.dec(&op.mode),
-        INC => self.inc(&op.mode),
+        INC => {
+          self.inc(&op.mode);
+        }
         EOR => self.eor(&op.mode),
 
         CLC => self.status.set_c(false),
@@ -234,6 +236,16 @@ impl<'a> Cpu<'a> {
         STA => self.sta(&op.mode),
         STX => self.stx(&op.mode),
         STY => self.sty(&op.mode),
+
+        // Unofficial Opcodes
+        DCP => self.dcp(&op.mode),
+        ISB => self.isb(&op.mode),
+        LAX => self.lax(&op.mode),
+        RLA => self.rla(&op.mode),
+        RRA => self.rra(&op.mode),
+        SAX => self.sax(&op.mode),
+        SLO => self.slo(&op.mode),
+        SRE => self.sre(&op.mode),
 
         _ => panic!("instruction {:?} not implemented", op),
       }
@@ -502,11 +514,13 @@ impl<'a> Cpu<'a> {
 
   // Increments & Decrements
 
-  fn inc(&mut self, mode: &AddressMode) {
+  fn inc(&mut self, mode: &AddressMode) -> u8 {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr).wrapping_add(1);
     self.write(addr, val);
     self.set_z_n_flags(val);
+    // return is used in unofficial opcodes
+    val
   }
 
   fn inx(&mut self) {
@@ -703,6 +717,53 @@ impl<'a> Cpu<'a> {
     self.pc = self.pull_u16();
     self.status.set_b(false);
     self.status.set_b2(true);
+  }
+
+  // Unofficial Opcodes
+
+  fn dcp(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr).wrapping_sub(1);
+    self.write(addr, val);
+    self.cmp(mode, self.a);
+  }
+
+  fn isb(&mut self, mode: &AddressMode) {
+    let val = self.inc(mode);
+    self.sub_from_a(val);
+  }
+
+  fn lax(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    let val = self.read(addr);
+    self.a = val;
+    self.x = val;
+    self.set_z_n_flags(val);
+  }
+
+  fn rla(&mut self, mode: &AddressMode) {
+    self.rol(mode);
+    self.and(mode);
+  }
+
+  fn rra(&mut self, mode: &AddressMode) {
+    self.ror(mode);
+    self.adc(mode);
+  }
+
+  fn sax(&mut self, mode: &AddressMode) {
+    let addr = self.get_operand_address(mode);
+    self.write(addr, self.a & self.x);
+  }
+
+  fn slo(&mut self, mode: &AddressMode) {
+    self.asl(&mode);
+    self.ora(&mode);
+  }
+
+  fn sre(&mut self, mode: &AddressMode) {
+    self.lsr(mode);
+    self.eor(mode);
   }
 }
 
