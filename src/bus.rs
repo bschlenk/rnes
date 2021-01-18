@@ -1,5 +1,5 @@
 use crate::bit::{make_u16, split_u16};
-use crate::rom::{Mirroring, Rom};
+use crate::rom::Rom;
 
 pub trait Bus {
   fn read(&self, addr: u16) -> u8;
@@ -129,15 +129,7 @@ mod test {
 
   #[test]
   fn test_data_bus_mirroring() {
-    let rom = Rom {
-      prg_rom: vec![0; 2048],
-      chr_rom: vec![0; 1024],
-      mirroring: Mirroring::Horizontal,
-      battery_backed_ram: false,
-      trainer: None,
-      mapper: 0,
-    };
-
+    let rom = Rom::default();
     let mut bus = DataBus::new(rom);
 
     bus.write(0, 0xab);

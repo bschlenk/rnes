@@ -2,6 +2,7 @@ mod bit;
 mod bus;
 mod cpu;
 mod opcodes;
+mod ppu;
 mod rom;
 mod status;
 

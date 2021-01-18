@@ -1,4 +1,5 @@
 use crate::bit::{check_bit, Bit};
+use crate::ppu::Mirroring;
 use std::fs;
 
 // N,E,S,EOL
@@ -22,13 +23,7 @@ const TRAINER_SIZE: usize = 512;
 
 */
 
-#[derive(Debug, PartialEq)]
-pub enum Mirroring {
-  Horizontal,
-  Vertical,
-  FourScreen,
-}
-
+#[derive(Default)]
 pub struct Rom {
   pub prg_rom: Vec<u8>,
   pub chr_rom: Vec<u8>,
