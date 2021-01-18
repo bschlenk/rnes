@@ -472,20 +472,25 @@ impl<'a> Cpu<'a> {
   fn sbc(&mut self, mode: &AddressMode) {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr);
-    self.add_to_a((val as i8).wrapping_neg().wrapping_sub(1) as u8)
+    self.sub_from_a(val);
   }
 
   fn add_to_a(&mut self, val: u8) {
     let initial_a = self.a;
-    self.a = self
-      .a
-      .wrapping_add(val)
-      .wrapping_add(self.status.get_c() as u8);
-    self.status.set_c(initial_a > self.a);
+    let res = (self.a as u16)
+      .wrapping_add(val as u16)
+      .wrapping_add(self.status.get_c() as u16);
+    self.a = res as u8;
+    self.status.set_c(res > 0xff);
     self
       .status
       .set_v(check_bit((initial_a ^ self.a) & (val ^ self.a), Bit::Seven));
     self.set_z_n_flags(self.a);
+  }
+
+  fn sub_from_a(&mut self, val: u8) {
+    // sub 1 due to carry
+    self.add_to_a(val.wrapping_neg().wrapping_sub(1));
   }
 
   fn cmp(&mut self, mode: &AddressMode, with: u8) {
@@ -853,6 +858,35 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0x00);
+    assert_eq!(cpu.status.get_c(), true);
+    assert_eq!(cpu.status.get_n(), false);
+    assert_eq!(cpu.status.get_z(), true)
+  }
+
+  #[test]
+  fn test_0xe9_sbc_zero_from_ff() {
+    // load 0xff into A, subtract 0
+    let mut bus = vec![0xa9, 0xff, 0xe9, 0x00, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.status.set_c(true);
+
+    cpu.process();
+    assert_eq!(cpu.a, 0xff);
+    assert_eq!(cpu.status.get_c(), true);
+    assert_eq!(cpu.status.get_n(), true);
+    assert_eq!(cpu.status.get_z(), false)
+  }
+
+  #[test]
+  fn test_0xe9_sbc_40_from_40() {
+    // load 0x40 into A, subtract 0x40
+    let mut bus = vec![0xa9, 0x40, 0xe9, 0x40, 0x00];
+    let mut cpu = Cpu::new(&mut bus);
+    cpu.status.set_c(true);
+
+    cpu.process();
+    assert_eq!(cpu.a, 0x00);
+    assert_eq!(cpu.status.get_v(), false);
     assert_eq!(cpu.status.get_c(), true);
     assert_eq!(cpu.status.get_n(), false);
     assert_eq!(cpu.status.get_z(), true)
