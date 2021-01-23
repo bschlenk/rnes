@@ -437,7 +437,8 @@ impl<'a> Cpu<'a> {
   }
 
   fn plp(&mut self) {
-    self.status = Status::from_bits_truncate(self.pull());
+    let bits = self.pull();
+    self.status.update(bits);
     // TODO: find the docs for these, I don't get it
     self.status.remove(Status::BREAK);
     self.status.insert(Status::BREAK2);
@@ -718,7 +719,8 @@ impl<'a> Cpu<'a> {
   }
 
   fn rti(&mut self) {
-    self.status = Status::from_bits_truncate(self.pull());
+    let bits = self.pull();
+    self.status.update(bits);
     self.pc = self.pull_u16();
     self.status.remove(Status::BREAK);
     self.status.insert(Status::BREAK2);

@@ -67,6 +67,10 @@ impl Status {
   pub fn reset(&mut self) {
     self.bits = (Status::INTERRUPT | Status::BREAK2).bits;
   }
+
+  pub fn update(&mut self, bits: u8) {
+    self.bits = bits;
+  }
 }
 
 #[cfg(test)]
