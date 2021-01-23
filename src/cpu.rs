@@ -63,7 +63,7 @@ pub struct Cpu<'a> {
    * The CPU does not detect if the stack is overflowed by excessive pushing or
    * pulling operations and will most likely result in the program crashing.
    */
-  pub s: u8,
+  pub sp: u8,
 
   /**
    * Accumulator
@@ -112,7 +112,7 @@ pub struct Cpu<'a> {
    * Instructions exist to test the values of the various bits, to set or clear
    * some of them and to push or pull the entire set to or from the stack.
    */
-  pub status: Status,
+  pub p: Status,
 }
 
 impl<'a> Cpu<'a> {
@@ -120,21 +120,21 @@ impl<'a> Cpu<'a> {
     Cpu {
       bus,
       pc: 0,
-      s: 0xff,
+      sp: 0xff,
       a: 0,
       x: 0,
       y: 0,
-      status: Status::default(),
+      p: Status::default(),
     }
   }
 
   pub fn reset(&mut self) {
     self.pc = self.read_u16(RESET_VEC);
-    self.s = STACK_RESET;
+    self.sp = STACK_RESET;
     self.a = 0;
     self.x = 0;
     self.y = 0;
-    self.status.reset();
+    self.p.reset();
   }
 
   pub fn process(&mut self) {
@@ -160,8 +160,8 @@ impl<'a> Cpu<'a> {
         self.a,
         self.x,
         self.y,
-        self.status,
-        self.s,
+        self.p,
+        self.sp,
       );
 
       let prev_pc = self.pc;
@@ -222,13 +222,13 @@ impl<'a> Cpu<'a> {
         }
         EOR => self.eor(&op.mode),
 
-        CLC => self.status.remove(Status::CARRY),
-        SEC => self.status.insert(Status::CARRY),
-        CLI => self.status.remove(Status::INTERRUPT),
-        SEI => self.status.insert(Status::INTERRUPT),
-        CLV => self.status.remove(Status::OVERFLOW),
-        CLD => self.status.remove(Status::DECIMAL),
-        SED => self.status.insert(Status::DECIMAL),
+        CLC => self.p.remove(Status::CARRY),
+        SEC => self.p.insert(Status::CARRY),
+        CLI => self.p.remove(Status::INTERRUPT),
+        SEI => self.p.insert(Status::INTERRUPT),
+        CLV => self.p.remove(Status::OVERFLOW),
+        CLD => self.p.remove(Status::DECIMAL),
+        SED => self.p.insert(Status::DECIMAL),
 
         LDA => self.lda(&op.mode),
         LDX => self.ldx(&op.mode),
@@ -287,13 +287,13 @@ impl<'a> Cpu<'a> {
   }
 
   fn push(&mut self, val: u8) {
-    self.write(STACK_PAGE | (self.s as u16), val);
-    self.s = self.s.wrapping_sub(1);
+    self.write(STACK_PAGE | (self.sp as u16), val);
+    self.sp = self.sp.wrapping_sub(1);
   }
 
   fn pull(&mut self) -> u8 {
-    self.s = self.s.wrapping_add(1);
-    self.read(STACK_PAGE | (self.s as u16))
+    self.sp = self.sp.wrapping_add(1);
+    self.read(STACK_PAGE | (self.sp as u16))
   }
 
   fn push_u16(&mut self, val: u16) {
@@ -309,10 +309,8 @@ impl<'a> Cpu<'a> {
   }
 
   fn set_z_n_flags(&mut self, val: u8) {
-    self.status.set(Status::ZERO, val == 0);
-    self
-      .status
-      .set(Status::NEGATIVE, check_bit(val, Bit::Seven));
+    self.p.set(Status::ZERO, val == 0);
+    self.p.set(Status::NEGATIVE, check_bit(val, Bit::Seven));
   }
 
   pub fn get_operand_address(&self, mode: &AddressMode) -> u16 {
@@ -411,11 +409,11 @@ impl<'a> Cpu<'a> {
   // Stack Operations
 
   fn txs(&mut self) {
-    self.s = self.x;
+    self.sp = self.x;
   }
 
   fn tsx(&mut self) {
-    self.x = self.s;
+    self.x = self.sp;
     self.set_z_n_flags(self.x);
   }
 
@@ -425,7 +423,7 @@ impl<'a> Cpu<'a> {
 
   fn php(&mut self) {
     // http://wiki.nesdev.com/w/index.php/Status_flags#The_B_flag
-    let mut status = self.status.clone();
+    let mut status = self.p.clone();
     status.insert(Status::BREAK);
     status.insert(Status::BREAK2);
     self.push(status.bits());
@@ -438,10 +436,10 @@ impl<'a> Cpu<'a> {
 
   fn plp(&mut self) {
     let bits = self.pull();
-    self.status.update(bits);
+    self.p.update(bits);
     // TODO: find the docs for these, I don't get it
-    self.status.remove(Status::BREAK);
-    self.status.insert(Status::BREAK2);
+    self.p.remove(Status::BREAK);
+    self.p.insert(Status::BREAK2);
   }
 
   // Logical
@@ -471,11 +469,9 @@ impl<'a> Cpu<'a> {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr);
 
-    self.status.set(Status::ZERO, self.a & val == 0);
-    self.status.set(Status::OVERFLOW, check_bit(val, Bit::Six));
-    self
-      .status
-      .set(Status::NEGATIVE, check_bit(val, Bit::Seven));
+    self.p.set(Status::ZERO, self.a & val == 0);
+    self.p.set(Status::OVERFLOW, check_bit(val, Bit::Six));
+    self.p.set(Status::NEGATIVE, check_bit(val, Bit::Seven));
   }
 
   // Arithmetic
@@ -496,10 +492,10 @@ impl<'a> Cpu<'a> {
     let initial_a = self.a;
     let res = (self.a as u16)
       .wrapping_add(val as u16)
-      .wrapping_add(self.status.contains(Status::CARRY) as u16);
+      .wrapping_add(self.p.contains(Status::CARRY) as u16);
     self.a = res as u8;
-    self.status.set(Status::CARRY, res > 0xff);
-    self.status.set(
+    self.p.set(Status::CARRY, res > 0xff);
+    self.p.set(
       Status::OVERFLOW,
       check_bit((initial_a ^ self.a) & (val ^ self.a), Bit::Seven),
     );
@@ -514,7 +510,7 @@ impl<'a> Cpu<'a> {
   fn cmp(&mut self, mode: &AddressMode, with: u8) {
     let addr = self.get_operand_address(mode);
     let val = self.read(addr);
-    self.status.set(Status::CARRY, with >= val);
+    self.p.set(Status::CARRY, with >= val);
     self.set_z_n_flags(with.wrapping_sub(val));
   }
 
@@ -569,7 +565,7 @@ impl<'a> Cpu<'a> {
       val = self.read(addr);
     }
 
-    self.status.set(Status::CARRY, check_bit(val, Bit::Seven));
+    self.p.set(Status::CARRY, check_bit(val, Bit::Seven));
     val <<= 1;
     self.set_z_n_flags(val);
 
@@ -591,7 +587,7 @@ impl<'a> Cpu<'a> {
       val = self.read(addr);
     }
 
-    self.status.set(Status::CARRY, check_bit(val, Bit::Zero));
+    self.p.set(Status::CARRY, check_bit(val, Bit::Zero));
     val >>= 1;
     self.set_z_n_flags(val);
 
@@ -613,8 +609,8 @@ impl<'a> Cpu<'a> {
       val = self.read(addr);
     }
 
-    let carry = self.status.contains(Status::CARRY) as u8;
-    self.status.set(Status::CARRY, check_bit(val, Bit::Seven));
+    let carry = self.p.contains(Status::CARRY) as u8;
+    self.p.set(Status::CARRY, check_bit(val, Bit::Seven));
     val <<= 1;
     val |= carry;
     self.set_z_n_flags(val);
@@ -637,8 +633,8 @@ impl<'a> Cpu<'a> {
       val = self.read(addr);
     }
 
-    let carry = self.status.contains(Status::CARRY) as u8;
-    self.status.set(Status::CARRY, check_bit(val, Bit::Zero));
+    let carry = self.p.contains(Status::CARRY) as u8;
+    self.p.set(Status::CARRY, check_bit(val, Bit::Zero));
     val >>= 1;
     val |= carry << 7;
     self.set_z_n_flags(val);
@@ -701,7 +697,7 @@ impl<'a> Cpu<'a> {
   }
 
   fn branch(&mut self, status: Status, expect: bool) {
-    if self.status.contains(status) == expect {
+    if self.p.contains(status) == expect {
       // add 1 to skip over op
       self.pc = add_signed(self.pc, self.read_pc()).wrapping_add(1);
     }
@@ -713,17 +709,17 @@ impl<'a> Cpu<'a> {
     // TODO: ignore this if the i flag is set?
 
     self.push_u16(self.pc);
-    self.push(self.status.bits());
+    self.push(self.p.bits());
     self.pc = self.read_u16(IRQ_BRK_VEC);
-    self.status.insert(Status::BREAK);
+    self.p.insert(Status::BREAK);
   }
 
   fn rti(&mut self) {
     let bits = self.pull();
-    self.status.update(bits);
+    self.p.update(bits);
     self.pc = self.pull_u16();
-    self.status.remove(Status::BREAK);
-    self.status.insert(Status::BREAK2);
+    self.p.remove(Status::BREAK);
+    self.p.insert(Status::BREAK2);
   }
 
   // Unofficial Opcodes
@@ -784,8 +780,8 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.process();
     assert_eq!(cpu.a, 0x05);
-    assert!(!cpu.status.contains(Status::ZERO));
-    assert!(!cpu.status.contains(Status::NEGATIVE));
+    assert!(!cpu.p.contains(Status::ZERO));
+    assert!(!cpu.p.contains(Status::NEGATIVE));
   }
 
   #[test]
@@ -793,7 +789,7 @@ mod test {
     let mut bus = vec![0xa9, 0x00, 0x00];
     let mut cpu = Cpu::new(&mut bus);
     cpu.process();
-    assert!(cpu.status.contains(Status::ZERO));
+    assert!(cpu.p.contains(Status::ZERO));
   }
 
   #[test]
@@ -884,12 +880,12 @@ mod test {
     let mut bus = vec![0x69, 0x20, 0x00];
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 0x05;
-    cpu.status.insert(Status::CARRY);
+    cpu.p.insert(Status::CARRY);
 
     cpu.process();
     assert_eq!(cpu.a, 0x26);
-    assert_eq!(cpu.status.contains(Status::CARRY), false);
-    assert_eq!(cpu.status.contains(Status::ZERO), false)
+    assert_eq!(cpu.p.contains(Status::CARRY), false);
+    assert_eq!(cpu.p.contains(Status::ZERO), false)
   }
 
   #[test]
@@ -900,8 +896,8 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0xfe);
-    assert_eq!(cpu.status.contains(Status::OVERFLOW), true);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), true)
+    assert_eq!(cpu.p.contains(Status::OVERFLOW), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), true)
   }
 
   #[test]
@@ -912,9 +908,9 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0x87);
-    assert_eq!(cpu.status.contains(Status::CARRY), false);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), true);
-    assert_eq!(cpu.status.contains(Status::ZERO), false)
+    assert_eq!(cpu.p.contains(Status::CARRY), false);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
+    assert_eq!(cpu.p.contains(Status::ZERO), false)
   }
 
   #[test]
@@ -926,9 +922,9 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0x00);
-    assert_eq!(cpu.status.contains(Status::CARRY), true);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), false);
-    assert_eq!(cpu.status.contains(Status::ZERO), true)
+    assert_eq!(cpu.p.contains(Status::CARRY), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
+    assert_eq!(cpu.p.contains(Status::ZERO), true)
   }
 
   #[test]
@@ -936,13 +932,13 @@ mod test {
     // load 0xff into A, subtract 0
     let mut bus = vec![0xa9, 0xff, 0xe9, 0x00, 0x00];
     let mut cpu = Cpu::new(&mut bus);
-    cpu.status.insert(Status::CARRY);
+    cpu.p.insert(Status::CARRY);
 
     cpu.process();
     assert_eq!(cpu.a, 0xff);
-    assert_eq!(cpu.status.contains(Status::CARRY), true);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), true);
-    assert_eq!(cpu.status.contains(Status::ZERO), false)
+    assert_eq!(cpu.p.contains(Status::CARRY), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
+    assert_eq!(cpu.p.contains(Status::ZERO), false)
   }
 
   #[test]
@@ -950,14 +946,14 @@ mod test {
     // load 0x40 into A, subtract 0x40
     let mut bus = vec![0xa9, 0x40, 0xe9, 0x40, 0x00];
     let mut cpu = Cpu::new(&mut bus);
-    cpu.status.insert(Status::CARRY);
+    cpu.p.insert(Status::CARRY);
 
     cpu.process();
     assert_eq!(cpu.a, 0x00);
-    assert_eq!(cpu.status.contains(Status::OVERFLOW), false);
-    assert_eq!(cpu.status.contains(Status::CARRY), true);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), false);
-    assert_eq!(cpu.status.contains(Status::ZERO), true);
+    assert_eq!(cpu.p.contains(Status::OVERFLOW), false);
+    assert_eq!(cpu.p.contains(Status::CARRY), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
+    assert_eq!(cpu.p.contains(Status::ZERO), true);
   }
 
   #[test]
@@ -973,8 +969,8 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0x09);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), false);
-    assert_eq!(cpu.status.contains(Status::ZERO), false)
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
+    assert_eq!(cpu.p.contains(Status::ZERO), false)
   }
 
   #[test]
@@ -985,9 +981,9 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0x00);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), false);
-    assert_eq!(cpu.status.contains(Status::ZERO), true);
-    assert_eq!(cpu.status.contains(Status::CARRY), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
+    assert_eq!(cpu.p.contains(Status::ZERO), true);
+    assert_eq!(cpu.p.contains(Status::CARRY), true);
   }
 
   #[test]
@@ -997,9 +993,9 @@ mod test {
     cpu.a = 0xf0;
 
     cpu.process();
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), true);
-    assert_eq!(cpu.status.contains(Status::OVERFLOW), true);
-    assert_eq!(cpu.status.contains(Status::ZERO), false);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
+    assert_eq!(cpu.p.contains(Status::OVERFLOW), true);
+    assert_eq!(cpu.p.contains(Status::ZERO), false);
   }
 
   #[test]
@@ -1020,9 +1016,9 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.a, 0x09); // didn't modify
-    assert_eq!(cpu.status.contains(Status::ZERO), false);
-    assert_eq!(cpu.status.contains(Status::CARRY), false);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), true);
+    assert_eq!(cpu.p.contains(Status::ZERO), false);
+    assert_eq!(cpu.p.contains(Status::CARRY), false);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
   }
 
   #[test]
@@ -1033,9 +1029,9 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.x, 0x0a); // didn't modify
-    assert_eq!(cpu.status.contains(Status::ZERO), true);
-    assert_eq!(cpu.status.contains(Status::CARRY), true);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), false);
+    assert_eq!(cpu.p.contains(Status::ZERO), true);
+    assert_eq!(cpu.p.contains(Status::CARRY), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
   }
 
   #[test]
@@ -1046,9 +1042,9 @@ mod test {
 
     cpu.process();
     assert_eq!(cpu.y, 0xfa); // didn't modify
-    assert_eq!(cpu.status.contains(Status::ZERO), false);
-    assert_eq!(cpu.status.contains(Status::CARRY), true);
-    assert_eq!(cpu.status.contains(Status::NEGATIVE), true);
+    assert_eq!(cpu.p.contains(Status::ZERO), false);
+    assert_eq!(cpu.p.contains(Status::CARRY), true);
+    assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
   }
 
   #[test]
