@@ -39,6 +39,10 @@ pub fn add_signed(val: u16, op: u8) -> u16 {
   val.wrapping_add((op as i8) as u16)
 }
 
+pub fn page_crossed(a: u16, b: u16) -> bool {
+  a >> 8 != b >> 8
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -83,5 +87,11 @@ mod tests {
     let y: u8 = 0xfd; // -3
 
     assert_eq!(add_signed(x, y), 120);
+  }
+
+  #[test]
+  fn it_can_detect_page_crossed() {
+    assert!(!page_crossed(0x00ab, 0x00cd), "page not crossed");
+    assert!(page_crossed(0x00ff, 0x0100), "page crossed");
   }
 }

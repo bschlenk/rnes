@@ -1,6 +1,6 @@
 use crate::bit::*;
 use crate::bus::Bus;
-use crate::opcodes::{OpCode::*, OPCODES_MAP};
+use crate::opcodes::{OpCode::*, OpInfo, OPCODES_MAP};
 use crate::status::Status;
 
 const STACK_PAGE: u16 = 0x0100;
@@ -113,6 +113,9 @@ pub struct Cpu<'a> {
    * some of them and to push or pull the entire set to or from the stack.
    */
   pub p: Status,
+
+  /** Number of cycles passed since the emulator started. */
+  pub cycles: u64,
 }
 
 impl<'a> Cpu<'a> {
@@ -125,6 +128,7 @@ impl<'a> Cpu<'a> {
       x: 0,
       y: 0,
       p: Status::default(),
+      cycles: 7, // TODO: reset should do this
     }
   }
 
@@ -145,7 +149,7 @@ impl<'a> Cpu<'a> {
       let op = OPCODES_MAP[opcode as usize];
 
       println!(
-        "{:04X}  {:02X} {} {:<31}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+        "{:04X}  {:02X} {} {:<31}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
         self.pc - 1,
         opcode,
         match op.len {
@@ -154,7 +158,7 @@ impl<'a> Cpu<'a> {
           1 => "     ".to_string(),
           2 => format!("{:02X}   ", self.read_pc()),
           3 => format!("{:02X} {:02X}", self.read_pc(), self.read(self.pc + 1)),
-          _ => panic!("length more than 3"),
+          _ => unreachable!(),
         },
         op.to_assembly(self),
         self.a,
@@ -162,13 +166,18 @@ impl<'a> Cpu<'a> {
         self.y,
         self.p,
         self.sp,
+        self.cycles,
       );
 
       let prev_pc = self.pc;
+      let prev_cycles = self.cycles;
 
       match op.op {
         BRK => return,
-        NOP => {}
+        NOP => {
+          // unofficial nop may cause extra cycles
+          self.boundary_tick(&op);
+        }
         RTI => self.rti(),
 
         TAX => self.tax(),
@@ -187,10 +196,10 @@ impl<'a> Cpu<'a> {
         PHP => self.php(),
         PLP => self.plp(),
 
-        ADC => self.adc(&op.mode),
-        SBC => self.sbc(&op.mode),
-        AND => self.and(&op.mode),
-        ORA => self.ora(&op.mode),
+        ADC => self.adc(&op, true),
+        SBC => self.sbc(&op),
+        AND => self.and(&op, true),
+        ORA => self.ora(&op, true),
         BIT => self.bit(&op.mode),
 
         ASL => self.asl(&op.mode),
@@ -212,15 +221,15 @@ impl<'a> Cpu<'a> {
         JSR => self.jsr(),
         RTS => self.rts(),
 
-        CMP => self.cmp(&op.mode, self.a),
-        CPX => self.cmp(&op.mode, self.x),
-        CPY => self.cmp(&op.mode, self.y),
+        CMP => self.cmp(&op, self.a, true),
+        CPX => self.cmp(&op, self.x, false),
+        CPY => self.cmp(&op, self.y, false),
 
         DEC => self.dec(&op.mode),
         INC => {
           self.inc(&op.mode);
         }
-        EOR => self.eor(&op.mode),
+        EOR => self.eor(&op, true),
 
         CLC => self.p.remove(Status::CARRY),
         SEC => self.p.insert(Status::CARRY),
@@ -230,22 +239,22 @@ impl<'a> Cpu<'a> {
         CLD => self.p.remove(Status::DECIMAL),
         SED => self.p.insert(Status::DECIMAL),
 
-        LDA => self.lda(&op.mode),
-        LDX => self.ldx(&op.mode),
-        LDY => self.ldy(&op.mode),
+        LDA => self.lda(&op),
+        LDX => self.ldx(&op),
+        LDY => self.ldy(&op),
         STA => self.sta(&op.mode),
         STX => self.stx(&op.mode),
         STY => self.sty(&op.mode),
 
         // Unofficial Opcodes
-        DCP => self.dcp(&op.mode),
+        DCP => self.dcp(&op),
         ISB => self.isb(&op.mode),
-        LAX => self.lax(&op.mode),
-        RLA => self.rla(&op.mode),
-        RRA => self.rra(&op.mode),
+        LAX => self.lax(&op),
+        RLA => self.rla(&op),
+        RRA => self.rra(&op),
         SAX => self.sax(&op.mode),
-        SLO => self.slo(&op.mode),
-        SRE => self.sre(&op.mode),
+        SLO => self.slo(&op),
+        SRE => self.sre(&op),
 
         _ => panic!("instruction {:?} not implemented", op),
       }
@@ -254,7 +263,16 @@ impl<'a> Cpu<'a> {
       if prev_pc == self.pc {
         self.inc_pc(op.len - 1);
       }
+
+      // only tick if the op didn't do it for us
+      if prev_cycles == self.cycles {
+        self.tick(op.cycles as u64);
+      }
     }
+  }
+
+  fn tick(&mut self, cycles: u64) {
+    self.cycles += cycles;
   }
 
   fn inc_pc(&mut self, inc: u8) {
@@ -340,33 +358,66 @@ impl<'a> Cpu<'a> {
         .bus
         .wrapping_read_u16(self.read_pc())
         .wrapping_add(self.y as u16),
+  }
+
+  fn boundary_crossed(&mut self, mode: &AddressMode) -> bool {
+    match mode {
+      AbsoluteX => {
+        let old = self.read_pc_u16();
+        let new = old.wrapping_add(self.x as u16);
+        page_crossed(old, new)
+      }
+      AbsoluteY => {
+        let old = self.read_pc_u16();
+        let new = old.wrapping_add(self.y as u16);
+        page_crossed(old, new)
+      }
+      IndirectY => {
+        let addr = self.read_pc();
+        let old = self.bus.wrapping_read_u16(addr);
+        let new = old.wrapping_add(self.y as u16);
+        page_crossed(old, new)
+      }
+      _ => false,
+    }
+  }
+
+  fn boundary_tick(&mut self, op: &OpInfo) {
+    if self.boundary_crossed(&op.mode) {
+      self.tick((op.cycles + 1) as u64);
     }
   }
 
   // Load / Store Operations
 
-  fn lda(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(&mode);
+  fn lda(&mut self, op: &OpInfo) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.bus.read(addr);
 
     self.a = val;
     self.set_z_n_flags(val);
+
+    self.boundary_tick(op);
   }
 
-  fn ldx(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn ldx(&mut self, op: &OpInfo) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.bus.read(addr);
 
     self.x = val;
     self.set_z_n_flags(val);
+
+    self.boundary_tick(op);
   }
 
-  fn ldy(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn ldy(&mut self, op: &OpInfo) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.bus.read(addr);
 
     self.y = val;
     self.set_z_n_flags(val);
+
+    self.boundary_tick(op);
   }
 
   fn sta(&mut self, mode: &AddressMode) {
@@ -444,25 +495,39 @@ impl<'a> Cpu<'a> {
 
   // Logical
 
-  fn and(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn and(&mut self, op: &OpInfo, check_bounds: bool) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.a &= val;
     self.set_z_n_flags(self.a);
+
+    // TODO: this is getting ugly...
+    if check_bounds {
+      self.boundary_tick(op);
+    }
   }
 
-  fn eor(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn eor(&mut self, op: &OpInfo, check_bounds: bool) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.a ^= val;
     self.set_z_n_flags(self.a);
+
+    if check_bounds {
+      self.boundary_tick(op);
+    }
   }
 
-  fn ora(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn ora(&mut self, op: &OpInfo, check_boundary: bool) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.a |= val;
     self.set_z_n_flags(self.a);
+
+    // TODO: this is getting ugly...
+    if check_boundary {
+      self.boundary_tick(op);
+    }
   }
 
   fn bit(&mut self, mode: &AddressMode) {
@@ -476,16 +541,23 @@ impl<'a> Cpu<'a> {
 
   // Arithmetic
 
-  fn adc(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn adc(&mut self, op: &OpInfo, check_bounds: bool) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.add_to_a(val);
+
+    // TODO: ugly
+    if check_bounds {
+      self.boundary_tick(op);
+    }
   }
 
-  fn sbc(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn sbc(&mut self, op: &OpInfo) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.sub_from_a(val);
+
+    self.boundary_tick(op);
   }
 
   fn add_to_a(&mut self, val: u8) {
@@ -507,11 +579,15 @@ impl<'a> Cpu<'a> {
     self.add_to_a(val.wrapping_neg().wrapping_sub(1));
   }
 
-  fn cmp(&mut self, mode: &AddressMode, with: u8) {
-    let addr = self.get_operand_address(mode);
+  fn cmp(&mut self, op: &OpInfo, with: u8, check_bounds: bool) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.p.set(Status::CARRY, with >= val);
     self.set_z_n_flags(with.wrapping_sub(val));
+
+    if check_bounds {
+      self.boundary_tick(op);
+    }
   }
 
   // Increments & Decrements
@@ -698,8 +774,15 @@ impl<'a> Cpu<'a> {
 
   fn branch(&mut self, status: Status, expect: bool) {
     if self.p.contains(status) == expect {
+      let b = self.read_pc();
       // add 1 to skip over op
-      self.pc = add_signed(self.pc, self.read_pc()).wrapping_add(1);
+      self.inc_pc(1);
+
+      let old_pc = self.pc;
+      self.pc = add_signed(old_pc, b);
+
+      // branch taken, we want to increment cycle by 3, or 4 if page boundary crossed
+      self.tick(if page_crossed(old_pc, self.pc) { 4 } else { 3 });
     }
   }
 
@@ -724,11 +807,11 @@ impl<'a> Cpu<'a> {
 
   // Unofficial Opcodes
 
-  fn dcp(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn dcp(&mut self, op: &OpInfo) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr).wrapping_sub(1);
     self.write(addr, val);
-    self.cmp(mode, self.a);
+    self.cmp(op, self.a, false);
   }
 
   fn isb(&mut self, mode: &AddressMode) {
@@ -736,22 +819,24 @@ impl<'a> Cpu<'a> {
     self.sub_from_a(val);
   }
 
-  fn lax(&mut self, mode: &AddressMode) {
-    let addr = self.get_operand_address(mode);
+  fn lax(&mut self, op: &OpInfo) {
+    let addr = self.get_operand_address(&op.mode);
     let val = self.read(addr);
     self.a = val;
     self.x = val;
     self.set_z_n_flags(val);
+
+    self.boundary_tick(op);
   }
 
-  fn rla(&mut self, mode: &AddressMode) {
-    self.rol(mode);
-    self.and(mode);
+  fn rla(&mut self, op: &OpInfo) {
+    self.rol(&op.mode);
+    self.and(op, false);
   }
 
-  fn rra(&mut self, mode: &AddressMode) {
-    self.ror(mode);
-    self.adc(mode);
+  fn rra(&mut self, op: &OpInfo) {
+    self.ror(&op.mode);
+    self.adc(op, false);
   }
 
   fn sax(&mut self, mode: &AddressMode) {
@@ -759,14 +844,14 @@ impl<'a> Cpu<'a> {
     self.write(addr, self.a & self.x);
   }
 
-  fn slo(&mut self, mode: &AddressMode) {
-    self.asl(&mode);
-    self.ora(&mode);
+  fn slo(&mut self, op: &OpInfo) {
+    self.asl(&op.mode);
+    self.ora(op, false);
   }
 
-  fn sre(&mut self, mode: &AddressMode) {
-    self.lsr(mode);
-    self.eor(mode);
+  fn sre(&mut self, op: &OpInfo) {
+    self.lsr(&op.mode);
+    self.eor(op, false);
   }
 }
 
