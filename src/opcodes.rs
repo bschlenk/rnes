@@ -109,7 +109,7 @@ impl OpInfo {
     }
   }
 
-  pub fn to_assembly(&self, cpu: &Cpu) -> String {
+  pub fn to_assembly(&self, cpu: &mut Cpu) -> String {
     let op = match self.op {
       BPL | BMI | BVC | BVS | BCC | BCS | BNE | BEQ => {
         // print where we're going instead of offset
@@ -119,11 +119,10 @@ impl OpInfo {
         Implicit => "".to_string(),
         Accumulator => "A".to_string(),
         Immediate => format!("#${:02X}", cpu.read_pc()),
-        ZeroPage => format!(
-          "${:02X} = {:02X}",
-          cpu.read_pc(),
-          cpu.read(cpu.read_pc() as u16)
-        ),
+        ZeroPage => {
+          let addr = cpu.read_pc();
+          format!("${:02X} = {:02X}", addr, cpu.read(addr as u16))
+        }
         ZeroPageX => {
           let addr = cpu.get_operand_address(&ZeroPageX);
           let val = cpu.read(addr);
@@ -136,11 +135,10 @@ impl OpInfo {
         }
         Absolute => match self.op {
           JMP | JSR => format!("${:04X}", cpu.read_pc_u16()),
-          _ => format!(
-            "${:04X} = {:02X}",
-            cpu.read_pc_u16(),
-            cpu.read(cpu.read_pc_u16())
-          ),
+          _ => {
+            let addr = cpu.read_pc_u16();
+            format!("${:04X} = {:02X}", addr, cpu.read(addr))
+          }
         },
         AbsoluteX => {
           let addr = cpu.get_operand_address(&AbsoluteX);
@@ -491,7 +489,7 @@ lazy_static! {
   ];
   pub static ref OPCODES_MAP: [&'static OpInfo; 0x100] = {
     let mut map: [&'static OpInfo; 0x100] = [&BAD_OPCODE; 0x100];
-    for op in &*OPCODES {
+    for op in OPCODES.iter() {
       map[op.id as usize] = op;
     }
     map

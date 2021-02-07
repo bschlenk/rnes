@@ -1,10 +1,11 @@
 use crate::bit::{make_u16, split_u16};
+use crate::ppu::Ppu;
 use crate::rom::Rom;
 
 pub trait Bus {
-  fn read(&self, addr: u16) -> u8;
+  fn read(&mut self, addr: u16) -> u8;
 
-  fn read_u16(&self, addr: u16) -> u16 {
+  fn read_u16(&mut self, addr: u16) -> u16 {
     let lo = self.read(addr);
     let hi = self.read(addr.wrapping_add(1));
     make_u16(lo, hi)
@@ -14,7 +15,7 @@ pub trait Bus {
    * Read a u16 from the given 8-bit address. If the given addr is 0xff, the
    * high byte is wrapped and read from 0x00.
    */
-  fn wrapping_read_u16(&self, addr: u8) -> u16 {
+  fn wrapping_read_u16(&mut self, addr: u8) -> u16 {
     let lo = self.read(addr as u16);
     let hi = self.read(addr.wrapping_add(1) as u16);
     make_u16(lo, hi)
@@ -27,57 +28,72 @@ pub trait Bus {
     self.write(addr, lo);
     self.write(addr + 1, hi);
   }
+
+  fn tick(&mut self, cpu_cycles: u64);
 }
 
 impl Bus for Vec<u8> {
-  fn read(&self, addr: u16) -> u8 {
+  fn read(&mut self, addr: u16) -> u8 {
     self[addr as usize]
   }
 
   fn write(&mut self, addr: u16, val: u8) {
     self[addr as usize] = val;
   }
+
+  fn tick(&mut self, cpu_cycles: u64) {
+    // pass
+  }
 }
 
 pub struct DataBus {
   ram: [u8; 2048],
-  rom: Rom,
+  prg_rom: Vec<u8>,
+  ppu: Ppu,
+  cpu_cycles: u64,
 }
 
 impl DataBus {
   pub fn new(rom: Rom) -> Self {
+    let ppu = Ppu::new(rom.chr_rom, rom.mirroring);
+
     Self {
       ram: [0; 2048],
-      rom,
+      prg_rom: rom.prg_rom,
+      ppu,
+      cpu_cycles: 0,
     }
   }
 
   fn read_prg_rom(&self, mut addr: u16) -> u8 {
     addr -= 0x8000;
-    if self.rom.prg_rom.len() == 0x4000 && addr >= 0x4000 {
+    if self.prg_rom.len() == 0x4000 && addr >= 0x4000 {
       // mirror if needed
       addr = addr % 0x4000;
     }
-    self.rom.prg_rom[addr as usize]
+    self.prg_rom[addr as usize]
   }
 }
 
 impl Bus for DataBus {
-  fn read(&self, addr: u16) -> u8 {
+  fn read(&mut self, addr: u16) -> u8 {
     match addr {
       0..=0x1fff => {
         let mirrored = addr & 0b111_1111_1111;
         self.ram[mirrored as usize]
       }
-      0x2000..=0x3fff => {
-        let _mirrored = addr & 0b10_0000_0000_0111;
-        todo!("PPU not implemented")
+      0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
+        panic!("Attempt to read from write-only PPU address {:x}", addr)
       }
-      0x8000..=0xFFFF => self.read_prg_rom(addr),
-      _ => {
-        println!("Ignoring memory access for {}", addr);
-        0
+      0x2002 => self.ppu.read_status(),
+      0x2004 => self.ppu.read_oam_data(),
+      0x2007 => self.ppu.read_data(),
+      0x2008..=0x7fff => {
+        // ppu memory mirrored
+        let mirrored = addr & 0b10_0000_0000_0111;
+        self.read(mirrored)
       }
+      0x8000..=0xffff => self.read_prg_rom(addr),
     }
   }
 
@@ -87,15 +103,25 @@ impl Bus for DataBus {
         let mirrored = addr & 0b111_1111_1111;
         self.ram[mirrored as usize] = val;
       }
-      0x2000..=0x3fff => {
-        let _mirrored = addr & 0b10_0000_0000_0111;
-        todo!("PPU not implemented")
+      0x2000 => self.ppu.write_ctrl(val),
+      0x2001 => self.ppu.write_ctrl_2(val),
+      0x2002 => panic!("attempt to write ppu status reg"),
+      0x2003 => self.ppu.write_oam_addr(val),
+      0x2004 => self.ppu.write_oam_data(val),
+      0x2005 => self.ppu.write_scroll(val),
+      0x2006 => self.ppu.write_ppu_addr(val),
+      0x2007 => self.ppu.write_data(val),
+      0x2008..=0x7fff => {
+        let mirrored = addr & 0b10_0000_0000_0111;
+        self.write(mirrored, val);
       }
-      0x8000..=0xFFFF => panic!("Attempted to write to ROM"),
-      _ => {
-        println!("Ignoring memory write for {}", addr);
-      }
+      0x8000..=0xffff => panic!("Attempted to write to ROM"),
     }
+  }
+
+  fn tick(&mut self, cpu_cycles: u64) {
+    self.cpu_cycles += cpu_cycles;
+    self.ppu.tick(cpu_cycles * 3);
   }
 }
 
@@ -105,7 +131,7 @@ mod test {
 
   #[test]
   fn test_read_u16() {
-    let bus = vec![0xCD, 0xAB];
+    let mut bus = vec![0xCD, 0xAB];
     assert_eq!(0xABCD, bus.read_u16(0));
   }
 

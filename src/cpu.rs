@@ -279,20 +279,19 @@ impl<'a> Cpu<'a> {
     self.pc += inc as u16;
   }
 
-  pub fn read_pc(&self) -> u8 {
+  pub fn read_pc(&mut self) -> u8 {
     self.read(self.pc)
   }
 
-  pub fn read_pc_u16(&self) -> u16 {
+  pub fn read_pc_u16(&mut self) -> u16 {
     self.read_u16(self.pc)
   }
 
-  // TODO: remove these methods, just hardcode reading/writing from bus
-  pub fn read(&self, addr: u16) -> u8 {
+  pub fn read(&mut self, addr: u16) -> u8 {
     self.bus.read(addr)
   }
 
-  pub fn read_u16(&self, addr: u16) -> u16 {
+  pub fn read_u16(&mut self, addr: u16) -> u16 {
     self.bus.read_u16(addr)
   }
 
@@ -331,7 +330,7 @@ impl<'a> Cpu<'a> {
     self.p.set(Status::NEGATIVE, check_bit(val, Bit::Seven));
   }
 
-  pub fn get_operand_address(&self, mode: &AddressMode) -> u16 {
+  pub fn get_operand_address(&mut self, mode: &AddressMode) -> u16 {
     match mode {
       Implicit | Accumulator => panic!("{:?} address mode has no operand", mode),
       Immediate => self.pc,
@@ -351,13 +350,15 @@ impl<'a> Cpu<'a> {
 
         make_u16(self.read(lo_addr), self.read(hi_addr))
       }
-      IndirectX => self
-        .bus
-        .wrapping_read_u16(self.read_pc().wrapping_add(self.x)),
-      IndirectY => self
-        .bus
-        .wrapping_read_u16(self.read_pc())
-        .wrapping_add(self.y as u16),
+      IndirectX => {
+        let addr = self.read_pc().wrapping_add(self.x);
+        self.bus.wrapping_read_u16(addr)
+      }
+      IndirectY => {
+        let addr = self.read_pc();
+        self.bus.wrapping_read_u16(addr).wrapping_add(self.y as u16)
+      }
+    }
   }
 
   fn boundary_crossed(&mut self, mode: &AddressMode) -> bool {
