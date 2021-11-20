@@ -10,6 +10,22 @@ pub enum Bit {
   Seven = 1 << 7,
 }
 
+impl Bit {
+  pub fn from(num: u8) -> Bit {
+    match num {
+      0 => Bit::Zero,
+      1 => Bit::One,
+      2 => Bit::Two,
+      3 => Bit::Three,
+      4 => Bit::Four,
+      5 => Bit::Five,
+      6 => Bit::Six,
+      7 => Bit::Seven,
+      _ => panic!("Bit::from called with invalid argument {}", num),
+    }
+  }
+}
+
 pub fn check_bit(val: u8, bit: Bit) -> bool {
   val & (bit as u8) != 0
 }

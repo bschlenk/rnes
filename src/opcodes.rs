@@ -391,6 +391,74 @@ lazy_static! {
     OpInfo::new(0x0b, AAC, 2, 2, Immediate, false),
     OpInfo::new(0x2b, AAC, 2, 2, Immediate, false),
 
+    /*
+    AAX (SAX) [AXS]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND X register with accumulator and store result in memory. Status
+flags: N,Z
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Zero Page   |AAX arg    |$87| 2 | 3
+Zero Page,Y |AAX arg,Y  |$97| 2 | 4
+(Indirect,X)|AAX (arg,X)|$83| 2 | 6
+Absolute    |AAX arg    |$8F| 3 | 4
+
+
+ARR (ARR) [ARR]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND byte with accumulator, then rotate one bit right in accu-mulator and
+check bit 5 and 6:
+If both bits are 1: set C, clear V.
+If both bits are 0: clear C and V.
+If only bit 5 is 1: set V, clear C.
+If only bit 6 is 1: set C and V.
+Status flags: N,V,Z,C
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Immediate   |ARR #arg   |$6B| 2 | 2
+
+ASR (ASR) [ALR]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND byte with accumulator, then shift right one bit in accumu-lator.
+Status flags: N,Z,C
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Immediate   |ASR #arg   |$4B| 2 | 2
+
+ATX (LXA) [OAL]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND byte with accumulator, then transfer accumulator to X register.
+Status flags: N,Z
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Immediate   |ATX #arg   |$AB| 2 | 2
+
+AXA (SHA) [AXA]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND X register with accumulator then AND result with 7 and store in
+memory. Status flags: -
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Absolute,Y  |AXA arg,Y  |$9F| 3 | 5
+(Indirect),Y|AXA arg    |$93| 2 | 6
+
+
+AXS (SBX) [SAX]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND X register with accumulator and store result in X regis-ter, then
+subtract byte from X register (without borrow).
+Status flags: N,Z,C
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Immediate   |AXS #arg   |$CB| 2 | 2
+*/
+
     OpInfo::new(0xc7, DCP, 2, 5, ZeroPage, false),
     OpInfo::new(0xd7, DCP, 2, 6, ZeroPageX, false),
     OpInfo::new(0xcf, DCP, 3, 6, Absolute, false),
@@ -406,6 +474,18 @@ lazy_static! {
     OpInfo::new(0xfb, ISB, 3, 7, AbsoluteY, false),
     OpInfo::new(0xe3, ISB, 2, 8, IndirectX, false),
     OpInfo::new(0xf3, ISB, 2, 8, IndirectY, false),
+
+    /*
+    LAR (LAE) [LAS]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND memory with stack pointer, transfer result to accu-mulator, X
+register and stack pointer.
+Status flags: N,Z
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Absolute,Y  |LAR arg,Y  |$BB| 3 | 4 *
+*/
 
     OpInfo::new(0xa7, LAX, 2, 3, ZeroPage, false),
     OpInfo::new(0xb7, LAX, 2, 4, ZeroPageY, false),
@@ -453,6 +533,58 @@ lazy_static! {
     OpInfo::new(0x43, SRE, 2, 8, IndirectX, false),
     OpInfo::new(0x53, SRE, 2, 8, IndirectY, false),
 
+    /*
+    SXA (SHX) [XAS]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND X register with the high byte of the target address of the argument
++ 1. Store the result in memory.
+
+M =3D X AND HIGH(arg) + 1
+
+Status flags: -
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Absolute,Y  |SXA arg,Y  |$9E| 3 | 5
+
+SYA (SHY) [SAY]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND Y register with the high byte of the target address of the argument
++ 1. Store the result in memory.
+
+M =3D Y AND HIGH(arg) + 1
+
+Status flags: -
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Absolute,X  |SYA arg,X  |$9C| 3 | 5
+
+XAA (ANE) [XAA]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+Exact operation unknown. Read the referenced documents for more
+information and observations.
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Immediate   |XAA #arg   |$8B| 2 | 2
+
+
+XAS (SHS) [TAS]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+AND X register with accumulator and store result in stack pointer, then
+AND stack pointer with the high byte of the target address of the
+argument + 1. Store result in memory.
+
+S =3D X AND A, M =3D S AND HIGH(arg) + 1
+
+Status flags: -
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Absolute,Y  |XAS arg,Y  |$9B| 3 | 5
+    */
+
     OpInfo::new(0x1a, NOP, 1, 2, Implicit, false),
     OpInfo::new(0x3a, NOP, 1, 2, Implicit, false),
     OpInfo::new(0x5a, NOP, 1, 2, Implicit, false),
@@ -486,6 +618,28 @@ lazy_static! {
     OpInfo::new(0x7c, NOP, 3, 4/*+1 if page crossed*/, AbsoluteX, false),
     OpInfo::new(0xdc, NOP, 3, 4/*+1 if page crossed*/, AbsoluteX, false),
     OpInfo::new(0xfc, NOP, 3, 4/*+1 if page crossed*/, AbsoluteX, false),
+
+    /*
+    KIL (JAM) [HLT]
+=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D=3D
+Stop program counter (processor lock up).
+Status flags: -
+
+Addressing  |Mnemonics  |Opc|Sz | n
+------------|-----------|---|---|---
+Implied     |KIL        |$02| 1 | -
+Implied     |KIL        |$12| 1 | -
+Implied     |KIL        |$22| 1 | -
+Implied     |KIL        |$32| 1 | -
+Implied     |KIL        |$42| 1 | -
+Implied     |KIL        |$52| 1 | -
+Implied     |KIL        |$62| 1 | -
+Implied     |KIL        |$72| 1 | -
+Implied     |KIL        |$92| 1 | -
+Implied     |KIL        |$B2| 1 | -
+Implied     |KIL        |$D2| 1 | -
+Implied     |KIL        |$F2| 1 | -
+*/
   ];
   pub static ref OPCODES_MAP: [&'static OpInfo; 0x100] = {
     let mut map: [&'static OpInfo; 0x100] = [&BAD_OPCODE; 0x100];

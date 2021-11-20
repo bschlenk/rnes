@@ -1,4 +1,5 @@
 use crate::bit::{make_u16, split_u16};
+use crate::joypad::Joypad;
 use crate::ppu::Ppu;
 use crate::rom::Rom;
 
@@ -29,7 +30,9 @@ pub trait Bus {
     self.write(addr + 1, hi);
   }
 
-  fn tick(&mut self, cpu_cycles: u64);
+  fn tick(&mut self, cpu_cycles: usize);
+
+  fn poll_nmi_status(&mut self) -> Option<u8>;
 }
 
 impl Bus for Vec<u8> {
@@ -41,27 +44,39 @@ impl Bus for Vec<u8> {
     self[addr as usize] = val;
   }
 
-  fn tick(&mut self, cpu_cycles: u64) {
+  fn tick(&mut self, cpu_cycles: usize) {
     // pass
+  }
+
+  fn poll_nmi_status(&mut self) -> Option<u8> {
+    None
   }
 }
 
-pub struct DataBus {
+pub struct DataBus<'a> {
   ram: [u8; 2048],
   prg_rom: Vec<u8>,
   ppu: Ppu,
-  cpu_cycles: u64,
+  joypad: Joypad,
+  cpu_cycles: usize,
+  gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) + 'a>,
 }
 
-impl DataBus {
-  pub fn new(rom: Rom) -> Self {
+impl<'a> DataBus<'a> {
+  pub fn new<F>(rom: Rom, gameloop_callback: F) -> DataBus<'a>
+  where
+    F: FnMut(&Ppu, &mut Joypad) + 'a,
+  {
     let ppu = Ppu::new(rom.chr_rom, rom.mirroring);
+    let joypad = Joypad::new();
 
     Self {
       ram: [0; 2048],
       prg_rom: rom.prg_rom,
       ppu,
+      joypad,
       cpu_cycles: 0,
+      gameloop_callback: Box::from(gameloop_callback),
     }
   }
 
@@ -75,7 +90,7 @@ impl DataBus {
   }
 }
 
-impl Bus for DataBus {
+impl<'a> Bus for DataBus<'a> {
   fn read(&mut self, addr: u16) -> u8 {
     match addr {
       0..=0x1fff => {
@@ -83,11 +98,13 @@ impl Bus for DataBus {
         self.ram[mirrored as usize]
       }
       0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
-        panic!("Attempt to read from write-only PPU address {:x}", addr)
+        // panic!("Attempt to read from write-only PPU address {:x}", addr)
+        0 // debugger tries to read from here for some reason
       }
       0x2002 => self.ppu.read_status(),
       0x2004 => self.ppu.read_oam_data(),
       0x2007 => self.ppu.read_data(),
+      0x4016 => self.joypad.read(),
       0x2008..=0x7fff => {
         // ppu memory mirrored
         let mirrored = addr & 0b10_0000_0000_0111;
@@ -111,6 +128,7 @@ impl Bus for DataBus {
       0x2005 => self.ppu.write_scroll(val),
       0x2006 => self.ppu.write_ppu_addr(val),
       0x2007 => self.ppu.write_data(val),
+      0x4016 => self.joypad.write(val),
       0x2008..=0x7fff => {
         let mirrored = addr & 0b10_0000_0000_0111;
         self.write(mirrored, val);
@@ -119,9 +137,20 @@ impl Bus for DataBus {
     }
   }
 
-  fn tick(&mut self, cpu_cycles: u64) {
+  fn tick(&mut self, cpu_cycles: usize) {
     self.cpu_cycles += cpu_cycles;
+
+    let nmi_before = self.ppu.nmi_interrupt.is_some();
     self.ppu.tick(cpu_cycles * 3);
+    let nmi_after = self.ppu.nmi_interrupt.is_some();
+
+    if !nmi_before && nmi_after {
+      (self.gameloop_callback)(&self.ppu, &mut self.joypad);
+    }
+  }
+
+  fn poll_nmi_status(&mut self) -> Option<u8> {
+    self.ppu.nmi_interrupt.take()
   }
 }
 
@@ -156,7 +185,7 @@ mod test {
   #[test]
   fn test_data_bus_mirroring() {
     let rom = Rom::default();
-    let mut bus = DataBus::new(rom);
+    let mut bus = DataBus::new(rom, Box::from(|_: &Ppu| {}));
 
     bus.write(0, 0xab);
 

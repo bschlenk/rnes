@@ -17,18 +17,20 @@ pub struct Ppu {
   pub chr_rom: Vec<u8>,
   pub mirroring: Mirroring,
   pub vram: [u8; 2048],
+  pub nmi_interrupt: Option<u8>,
 
-  pub cycles: u64,
+  scanline: u16,
+  cycles: usize,
 
   status: StatusReg,
-  ctrl: CtrlReg,
+  pub ctrl: CtrlReg,
   ctrl2: CtrlReg2,
   addr: AddrReg,
   scroll: ScrollReg,
 
   oam_addr: u8,
-  oam_data: [u8; 256],
-  palette_table: [u8; 32],
+  pub oam_data: [u8; 256],
+  pub palette_table: [u8; 32],
 
   buff: u8,
 }
@@ -39,6 +41,9 @@ impl Ppu {
       chr_rom,
       mirroring,
       vram: [0; 2048],
+      nmi_interrupt: None,
+
+      scanline: 0,
       cycles: 0,
 
       status: StatusReg::empty(),
@@ -55,9 +60,35 @@ impl Ppu {
     }
   }
 
-  pub fn tick(&mut self, ppu_cycles: u64) {
+  pub fn tick(&mut self, ppu_cycles: usize) -> bool {
     self.cycles += ppu_cycles;
-    todo!("scan lines & interrupts");
+
+    // http://wiki.nesdev.com/w/index.php/PPU_rendering#Line-by-line_timing
+    if self.cycles > 341 {
+      self.cycles = self.cycles - 341;
+      self.scanline += 1;
+
+      println!("ppu scanline: {}", self.scanline);
+
+      if self.scanline == 241 {
+        println!("ppu in vblank!!!");
+        self.status.set_vblank(true);
+        self.status.remove(StatusReg::HIT);
+        if self.ctrl.generate_vblank_nmi() {
+          self.nmi_interrupt = Some(1);
+        }
+      }
+
+      if self.scanline >= 262 {
+        self.scanline = 0;
+        self.nmi_interrupt = None;
+        self.status.remove(StatusReg::HIT);
+        self.status.set_vblank(false);
+        return true;
+      }
+    }
+
+    false
   }
 
   pub fn read_status(&mut self) -> u8 {
@@ -69,7 +100,11 @@ impl Ppu {
   }
 
   pub fn write_ctrl(&mut self, val: u8) {
+    let vblank_old = self.ctrl.generate_vblank_nmi();
     self.ctrl.update(val);
+    if !vblank_old && self.ctrl.generate_vblank_nmi() && self.status.contains(StatusReg::VBLANK) {
+      self.nmi_interrupt = Some(1);
+    }
   }
 
   pub fn write_ctrl_2(&mut self, val: u8) {
@@ -144,6 +179,37 @@ impl Ppu {
       self.oam_data[self.oam_addr as usize] = *x;
       self.inc_oam_addr();
     }
+  }
+
+  pub fn bg_pallette(&self, tile_column: usize, tile_row: usize) -> [u8; 4] {
+    let attr_table_idx = tile_row / 4 * 8 + tile_column / 4;
+    let attr_byte = self.vram[0x3c0 + attr_table_idx]; // note: still using hardcoded first nametable
+
+    let pallet_idx = match (tile_column % 4 / 2, tile_row % 4 / 2) {
+      (0, 0) => attr_byte & 0b11,
+      (1, 0) => (attr_byte >> 2) & 0b11,
+      (0, 1) => (attr_byte >> 4) & 0b11,
+      (1, 1) => (attr_byte >> 6) & 0b11,
+      (_, _) => panic!("should not happen"),
+    };
+
+    let pallete_start: usize = 1 + (pallet_idx as usize) * 4;
+    [
+      self.palette_table[0],
+      self.palette_table[pallete_start],
+      self.palette_table[pallete_start + 1],
+      self.palette_table[pallete_start + 2],
+    ]
+  }
+
+  pub fn sprite_palette(&self, pallete_idx: u8) -> [u8; 4] {
+    let start = 0x11 + (pallete_idx * 4) as usize;
+    [
+      0,
+      self.palette_table[start],
+      self.palette_table[start + 1],
+      self.palette_table[start + 2],
+    ]
   }
 
   fn inc_vram(&mut self) {
@@ -264,7 +330,7 @@ bitflags! {
     const SPRITE_SIZE = Bit::Five as u8;
     const UNUSED = Bit::Six as u8;
     /// VBlank Enable, 1 = generate interrupts on VBlank.
-    const GENERATE_NMI = Bit::Seven as u8;
+    const GENERATE_VBLANK_NMI = Bit::Seven as u8;
   }
 }
 
@@ -314,6 +380,10 @@ impl CtrlReg {
       8
     }
   }
+
+  pub fn generate_vblank_nmi(&self) -> bool {
+    self.contains(Self::GENERATE_VBLANK_NMI)
+  }
 }
 
 bitflags! {
@@ -355,5 +425,11 @@ bitflags! {
     /// 1 = PPU is in VBlank state.
     /// This flag resets to 0 when VBlank ends or CPU reads $2002
     const VBLANK = Bit::Seven as u8;
+  }
+}
+
+impl StatusReg {
+  pub fn set_vblank(&mut self, val: bool) {
+    self.set(Self::VBLANK, val);
   }
 }

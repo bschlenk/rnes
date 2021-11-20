@@ -115,7 +115,7 @@ pub struct Cpu<'a> {
   pub p: Status,
 
   /** Number of cycles passed since the emulator started. */
-  pub cycles: u64,
+  pub cycles: usize,
 }
 
 impl<'a> Cpu<'a> {
@@ -139,15 +139,30 @@ impl<'a> Cpu<'a> {
     self.x = 0;
     self.y = 0;
     self.p.reset();
+    println!("reset pc to {:02x}", self.pc);
   }
 
-  pub fn process(&mut self) {
+  pub fn run(&mut self) {
+    self.run_with_callback(|_| {});
+  }
+
+  pub fn run_with_callback<F>(&mut self, mut callback: F)
+  where
+    F: FnMut(&mut Cpu),
+  {
     loop {
+      if let Some(_nmi) = self.bus.poll_nmi_status() {
+        self.interrupt_nmi();
+      }
+
+      callback(self);
+
       let opcode = self.read_pc();
       self.inc_pc(1);
 
       let op = OPCODES_MAP[opcode as usize];
 
+      /*
       println!(
         "{:04X}  {:02X} {} {:<31}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
         self.pc - 1,
@@ -168,6 +183,7 @@ impl<'a> Cpu<'a> {
         self.sp,
         self.cycles,
       );
+      */
 
       let prev_pc = self.pc;
       let prev_cycles = self.cycles;
@@ -266,13 +282,22 @@ impl<'a> Cpu<'a> {
 
       // only tick if the op didn't do it for us
       if prev_cycles == self.cycles {
-        self.tick(op.cycles as u64);
+        self.tick(op.cycles as usize);
       }
     }
   }
 
-  fn tick(&mut self, cycles: u64) {
+  fn tick(&mut self, cycles: usize) {
     self.cycles += cycles;
+    self.bus.tick(cycles);
+  }
+
+  fn interrupt_nmi(&mut self) {
+    self.push_u16(self.pc);
+    self.push_p(true);
+    self.p.insert(Status::INTERRUPT);
+    self.tick(2);
+    self.pc = self.read_u16(NMI_VEC);
   }
 
   fn inc_pc(&mut self, inc: u8) {
@@ -323,6 +348,16 @@ impl<'a> Cpu<'a> {
     let lo = self.pull();
     let hi = self.pull();
     make_u16(lo, hi)
+  }
+
+  /// Push the status reg to the stack. Bit 4 is set when the push was triggered
+  /// by an instruction. Bit 5 is always set.
+  /// http://wiki.nesdev.com/w/index.php/Status_flags#The_B_flag
+  fn push_p(&mut self, interrupt: bool) {
+    let mut p = self.p.clone();
+    p.set(Status::BREAK, !interrupt);
+    p.insert(Status::BREAK2);
+    self.push(p.bits());
   }
 
   fn set_z_n_flags(&mut self, val: u8) {
@@ -385,7 +420,7 @@ impl<'a> Cpu<'a> {
 
   fn boundary_tick(&mut self, op: &OpInfo) {
     if self.boundary_crossed(&op.mode) {
-      self.tick((op.cycles + 1) as u64);
+      self.tick((op.cycles + 1) as usize);
     }
   }
 
@@ -474,11 +509,7 @@ impl<'a> Cpu<'a> {
   }
 
   fn php(&mut self) {
-    // http://wiki.nesdev.com/w/index.php/Status_flags#The_B_flag
-    let mut status = self.p.clone();
-    status.insert(Status::BREAK);
-    status.insert(Status::BREAK2);
-    self.push(status.bits());
+    self.push_p(false);
   }
 
   fn pla(&mut self) {
@@ -864,7 +895,7 @@ mod test {
   fn test_0xa9_lda_immediate_load_data() {
     let mut bus = vec![0xa9, 0x05, 0x00];
     let mut cpu = Cpu::new(&mut bus);
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x05);
     assert!(!cpu.p.contains(Status::ZERO));
     assert!(!cpu.p.contains(Status::NEGATIVE));
@@ -874,7 +905,7 @@ mod test {
   fn test_0xa9_lda_zero_flag() {
     let mut bus = vec![0xa9, 0x00, 0x00];
     let mut cpu = Cpu::new(&mut bus);
-    cpu.process();
+    cpu.run();
     assert!(cpu.p.contains(Status::ZERO));
   }
 
@@ -883,7 +914,7 @@ mod test {
     let mut bus = vec![0xaa, 0x00];
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 10;
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.x, 10)
   }
 
@@ -891,7 +922,7 @@ mod test {
   fn test_5_ops_working_together() {
     let mut bus = vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00];
     let mut cpu = Cpu::new(&mut bus);
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.x, 0xc1)
   }
 
@@ -900,7 +931,7 @@ mod test {
     let mut bus = vec![0xe8, 0xe8, 0x00];
     let mut cpu = Cpu::new(&mut bus);
     cpu.x = 0xff;
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.x, 1)
   }
 
@@ -912,7 +943,7 @@ mod test {
     bus[0x09] = 0xba;
 
     let mut cpu = Cpu::new(&mut bus);
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0xba)
   }
 
@@ -926,7 +957,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.x = 0x02;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0xfa)
   }
 
@@ -942,7 +973,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.y = 0x03;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0xba)
   }
 
@@ -957,7 +988,7 @@ mod test {
     cpu.x = 0x04;
     cpu.a = 0xaa;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(bus[0x0306], 0xaa)
   }
 
@@ -968,7 +999,7 @@ mod test {
     cpu.a = 0x05;
     cpu.p.insert(Status::CARRY);
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x26);
     assert_eq!(cpu.p.contains(Status::CARRY), false);
     assert_eq!(cpu.p.contains(Status::ZERO), false)
@@ -980,7 +1011,7 @@ mod test {
     let mut bus = vec![0xa9, 0x7f, 0x69, 0x7f, 0x00];
     let mut cpu = Cpu::new(&mut bus);
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0xfe);
     assert_eq!(cpu.p.contains(Status::OVERFLOW), true);
     assert_eq!(cpu.p.contains(Status::NEGATIVE), true)
@@ -992,7 +1023,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 0x08;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x87);
     assert_eq!(cpu.p.contains(Status::CARRY), false);
     assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
@@ -1006,7 +1037,7 @@ mod test {
     cpu.x = 0x01;
     cpu.a = 0xf9;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x00);
     assert_eq!(cpu.p.contains(Status::CARRY), true);
     assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
@@ -1020,7 +1051,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.p.insert(Status::CARRY);
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0xff);
     assert_eq!(cpu.p.contains(Status::CARRY), true);
     assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
@@ -1034,7 +1065,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.p.insert(Status::CARRY);
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x00);
     assert_eq!(cpu.p.contains(Status::OVERFLOW), false);
     assert_eq!(cpu.p.contains(Status::CARRY), true);
@@ -1053,7 +1084,7 @@ mod test {
     cpu.y = 0x02;
     cpu.a = 0xf9;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x09);
     assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
     assert_eq!(cpu.p.contains(Status::ZERO), false)
@@ -1065,7 +1096,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 0x80;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x00);
     assert_eq!(cpu.p.contains(Status::NEGATIVE), false);
     assert_eq!(cpu.p.contains(Status::ZERO), true);
@@ -1078,7 +1109,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 0xf0;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.p.contains(Status::NEGATIVE), true);
     assert_eq!(cpu.p.contains(Status::OVERFLOW), true);
     assert_eq!(cpu.p.contains(Status::ZERO), false);
@@ -1090,7 +1121,7 @@ mod test {
     let mut bus = vec![0x38, 0xb0, 0x01, 0x00, 0xa9, 0xfa, 0x00];
     let mut cpu = Cpu::new(&mut bus);
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0xfa);
   }
 
@@ -1100,7 +1131,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 0x09;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x09); // didn't modify
     assert_eq!(cpu.p.contains(Status::ZERO), false);
     assert_eq!(cpu.p.contains(Status::CARRY), false);
@@ -1113,7 +1144,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.x = 0x0a;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.x, 0x0a); // didn't modify
     assert_eq!(cpu.p.contains(Status::ZERO), true);
     assert_eq!(cpu.p.contains(Status::CARRY), true);
@@ -1126,7 +1157,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.y = 0xfa;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.y, 0xfa); // didn't modify
     assert_eq!(cpu.p.contains(Status::ZERO), false);
     assert_eq!(cpu.p.contains(Status::CARRY), true);
@@ -1139,7 +1170,7 @@ mod test {
     let mut cpu = Cpu::new(&mut bus);
     cpu.a = 0x03;
 
-    cpu.process();
+    cpu.run();
     assert_eq!(cpu.a, 0x04);
     assert_eq!(bus[5], 0x07);
   }
