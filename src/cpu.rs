@@ -11,8 +11,8 @@ const IRQ_BRK_VEC: u16 = 0xfffe;
 // https://superuser.com/a/606770
 const STACK_RESET: u8 = 0xfd;
 
-const HZ_NTSC: f32 = 1.0 / 1789773.0;
-const HZ_PAL: f32 = 1.0 / 1662607.0;
+// const HZ_NTSC: f32 = 1.0 / 1789773.0;
+// const HZ_PAL: f32 = 1.0 / 1662607.0;
 
 #[derive(Debug, PartialEq)]
 pub enum AddressMode {
@@ -189,7 +189,10 @@ impl<'a> Cpu<'a> {
       let prev_cycles = self.cycles;
 
       match op.op {
-        BRK => return,
+        BRK => {
+          self.brk();
+          return;
+        }
         NOP => {
           // unofficial nop may cause extra cycles
           self.boundary_tick(&op);

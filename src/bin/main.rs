@@ -1,34 +1,21 @@
-mod bit;
-mod bus;
-mod cpu;
-mod joypad;
-mod opcodes;
-mod ppu;
-mod render;
-mod rom;
-mod status;
-
 use std::collections::HashMap;
-
-use bus::*;
-use cpu::Cpu;
-use joypad::{Joypad, JoypadButton};
-use ppu::Ppu;
-use render::frame::Frame;
-use render::palette::SYSTEM_PALETTE;
-use rom::Rom;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 
-#[macro_use]
-extern crate bitflags;
+use rnes::{
+  bus::*,
+  cpu::Cpu,
+  joypad::{Joypad, JoypadButton},
+  ppu::Ppu,
+  render,
+  render::frame::Frame,
+  render::palette::SYSTEM_PALETTE,
+  rom::Rom,
+};
 
-#[macro_use]
-extern crate lazy_static;
-
-fn show_tile(chr_rom: &Vec<u8>, bank: usize, tile_n: usize) -> Frame {
+fn _show_tile(chr_rom: &Vec<u8>, bank: usize, tile_n: usize) -> Frame {
   assert!(bank <= 1);
 
   let mut frame = Frame::new();
@@ -58,7 +45,7 @@ fn show_tile(chr_rom: &Vec<u8>, bank: usize, tile_n: usize) -> Frame {
   frame
 }
 
-fn show_tile_bank(chr_rom: &Vec<u8>, bank: usize) -> Frame {
+fn _show_tile_bank(chr_rom: &Vec<u8>, bank: usize) -> Frame {
   assert!(bank <= 1);
 
   let mut frame = Frame::new();

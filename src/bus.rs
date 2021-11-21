@@ -44,7 +44,7 @@ impl Bus for Vec<u8> {
     self[addr as usize] = val;
   }
 
-  fn tick(&mut self, cpu_cycles: usize) {
+  fn tick(&mut self, _cpu_cycles: usize) {
     // pass
   }
 

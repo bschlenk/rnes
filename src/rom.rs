@@ -37,7 +37,7 @@ impl Rom {
   pub fn load_from_file(path: &str) -> Result<Self, String> {
     let data = match fs::read(path) {
       Ok(data) => data,
-      Err(error) => panic!(error),
+      Err(error) => panic!("{}", error),
     };
 
     Self::new(data)

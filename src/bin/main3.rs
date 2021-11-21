@@ -1,17 +1,6 @@
-mod bit;
-mod bus;
-mod cpu;
-mod opcodes;
-mod rom;
-mod status;
-
-use bus::*;
-use cpu::Cpu;
-
 use std::fs;
 
-#[macro_use]
-extern crate lazy_static;
+use rnes::cpu::Cpu;
 
 fn main() {
   let mut bus = match fs::read("tests/6502_functional_test.bin") {
@@ -23,5 +12,5 @@ fn main() {
   cpu.reset();
   cpu.pc = 0x0400;
 
-  cpu.process();
+  cpu.run();
 }
