@@ -2,7 +2,7 @@
 name = "rnes"
 version = "0.1.0"
 authors = ["Brian Schlenker <bschlenk@umich.edu>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 bitflags = "1.2.1"
