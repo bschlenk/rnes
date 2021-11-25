@@ -164,7 +164,7 @@ impl<'a> Cpu<'a> {
 
       /*
       println!(
-        "{:04X}  {:02X} {} {:<31}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
+        "{:04X}  {:02X} {} {:<31}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU:{} CYC:{}",
         self.pc - 1,
         opcode,
         match op.len {
@@ -181,6 +181,7 @@ impl<'a> Cpu<'a> {
         self.y,
         self.p,
         self.sp,
+        self.bus.ppu_debug_str(),
         self.cycles,
       );
       */

@@ -19,8 +19,8 @@ pub struct Ppu {
   pub vram: [u8; 2048],
   pub nmi_interrupt: Option<u8>,
 
-  scanline: u16,
-  cycles: usize,
+  pub scanline: u16,
+  pub cycles: usize,
 
   status: StatusReg,
   pub ctrl: CtrlReg,

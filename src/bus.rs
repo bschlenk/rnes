@@ -33,6 +33,8 @@ pub trait Bus {
   fn tick(&mut self, cpu_cycles: usize);
 
   fn poll_nmi_status(&mut self) -> Option<u8>;
+
+  fn ppu_debug_str(&self) -> String;
 }
 
 impl Bus for Vec<u8> {
@@ -50,6 +52,10 @@ impl Bus for Vec<u8> {
 
   fn poll_nmi_status(&mut self) -> Option<u8> {
     None
+  }
+
+  fn ppu_debug_str(&self) -> String {
+    String::from("")
   }
 }
 
@@ -151,6 +157,10 @@ impl<'a> Bus for DataBus<'a> {
 
   fn poll_nmi_status(&mut self) -> Option<u8> {
     self.ppu.nmi_interrupt.take()
+  }
+
+  fn ppu_debug_str(&self) -> String {
+    format!("{:>3},{:>3}", self.ppu.scanline, self.ppu.cycles)
   }
 }
 
