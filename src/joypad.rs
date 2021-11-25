@@ -1,4 +1,6 @@
 use crate::bit::{check_bit, Bit};
+
+#[derive(Debug)]
 pub struct Joypad {
   strobe: bool,
   index: u8,
@@ -30,7 +32,7 @@ impl Joypad {
       return 1;
     }
     let response = check_bit(self.buttons.bits, Bit::from(self.index)) as u8;
-    if self.strobe {
+    if !self.strobe {
       self.index += 1;
     }
     response
