@@ -56,12 +56,12 @@ pub fn render(ppu: &Ppu, frame: &mut Frame) {
     for y in 0..8 {
       let mut upper = tile[y];
       let mut lower = tile[y + 8];
-      'inner: for x in (0..8).rev() {
+      for x in (0..8).rev() {
         let value = (1 & lower) << 1 | (1 & upper);
         upper = upper >> 1;
         lower = lower >> 1;
         let rgb = match value {
-          0 => continue 'inner, // skip coloring the pixel
+          0 => continue, // skip coloring the pixel
           1 => SYSTEM_PALETTE[sprite_palette[1] as usize],
           2 => SYSTEM_PALETTE[sprite_palette[2] as usize],
           3 => SYSTEM_PALETTE[sprite_palette[3] as usize],
