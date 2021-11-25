@@ -128,7 +128,7 @@ impl<'a> Cpu<'a> {
       x: 0,
       y: 0,
       p: Status::default(),
-      cycles: 7, // TODO: reset should do this
+      cycles: 0,
     }
   }
 
@@ -139,7 +139,7 @@ impl<'a> Cpu<'a> {
     self.x = 0;
     self.y = 0;
     self.p.reset();
-    println!("reset pc to {:02x}", self.pc);
+    self.tick(7);
   }
 
   pub fn run(&mut self) {
