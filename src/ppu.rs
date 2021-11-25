@@ -63,15 +63,12 @@ impl Ppu {
   pub fn tick(&mut self, ppu_cycles: usize) -> bool {
     self.cycles += ppu_cycles;
 
-    // http://wiki.nesdev.com/w/index.php/PPU_rendering#Line-by-line_timing
-    if self.cycles > 341 {
+    // https://wiki.nesdev.org/w/index.php/PPU_rendering#Line-by-line_timing
+    if self.cycles > 340 {
       self.cycles = self.cycles - 341;
       self.scanline += 1;
 
-      println!("ppu scanline: {}", self.scanline);
-
       if self.scanline == 241 {
-        println!("ppu in vblank!!!");
         self.status.set_vblank(true);
         self.status.remove(StatusReg::HIT);
         if self.ctrl.generate_vblank_nmi() {
@@ -190,7 +187,7 @@ impl Ppu {
       (1, 0) => (attr_byte >> 2) & 0b11,
       (0, 1) => (attr_byte >> 4) & 0b11,
       (1, 1) => (attr_byte >> 6) & 0b11,
-      (_, _) => panic!("should not happen"),
+      (_, _) => unreachable!(),
     };
 
     let pallete_start: usize = 1 + (pallet_idx as usize) * 4;
