@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -15,6 +16,8 @@ use rnes::{
 };
 
 fn main() {
+  let args: Vec<String> = env::args().collect();
+
   // init sdl2
   let sdl_context = sdl2::init().unwrap();
   let video_subsystem = sdl_context.video().unwrap();
@@ -33,7 +36,7 @@ fn main() {
     .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
     .unwrap();
 
-  let rom = Rom::load_from_file("./roms/Pac-Man (U) [!].nes").unwrap();
+  let rom = Rom::load_from_file(&args[1]).unwrap();
 
   let mut key_map = HashMap::with_capacity(8);
   key_map.insert(Keycode::Down, JoypadButton::DOWN);
