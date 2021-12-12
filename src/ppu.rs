@@ -1,4 +1,4 @@
-use crate::bit::{make_u16, Bit};
+use crate::bit::Bit;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Mirroring {
@@ -239,37 +239,34 @@ impl Ppu {
 
 #[derive(Default)]
 struct AddrReg {
-  // two writes, store the addr, then two reads, then we incrment the pointer?
-  addr: u16,
-  hi: u8,
+  value: [u8; 2],
   lo_next: bool,
 }
 
 impl AddrReg {
   pub fn get(&self) -> u16 {
-    self.addr
+    u16::from_le_bytes(self.value)
   }
 
   pub fn update(&mut self, addr: u8) {
     if self.lo_next {
-      self.set(make_u16(addr, self.hi));
+      self.value[0] = addr;
     } else {
-      self.hi = addr;
+      self.value[1] = addr;
     }
     self.lo_next = !self.lo_next;
   }
 
   pub fn inc(&mut self, inc: u8) {
-    self.set(self.addr.wrapping_add(inc as u16))
+    self.set(self.get().wrapping_add(inc as u16))
   }
 
   pub fn reset(&mut self) {
-    self.addr = 0;
     self.lo_next = false;
   }
 
   fn set(&mut self, addr: u16) {
-    self.addr = addr & 0x3fff;
+    self.value = (addr & 0x3fff).to_le_bytes();
   }
 }
 
