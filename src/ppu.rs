@@ -64,7 +64,7 @@ impl Ppu {
     self.cycles += ppu_cycles;
 
     // https://wiki.nesdev.org/w/index.php/PPU_rendering#Line-by-line_timing
-    if self.cycles > 340 {
+    if self.cycles >= 341 {
       self.cycles = self.cycles - 341;
       self.scanline += 1;
 
