@@ -195,7 +195,7 @@ mod test {
   #[test]
   fn test_data_bus_mirroring() {
     let rom = Rom::default();
-    let mut bus = DataBus::new(rom, Box::from(|_: &Ppu| {}));
+    let mut bus = DataBus::new(rom, Box::from(|_, _| {}));
 
     bus.write(0, 0xab);
 
